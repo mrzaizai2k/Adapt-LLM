@@ -1,4 +1,6 @@
-Quick start guide, work in progress, stay tuned!
+# ADAPT GPT Quick start guide
+
+Our work is still in progress, stay tuned!
 
 **Installing**:
 - Julia part:
