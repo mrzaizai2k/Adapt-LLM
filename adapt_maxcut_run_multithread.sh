@@ -7,9 +7,10 @@ SCRIPT_DIR="$(dirname "$(realpath "$0")")"
 # ADAPT parameters (adjust as needed) #
 N_WORKERS=20
 OUTPUT_DIR="<YOUR_DIRECTORY_HERE>"
-GRAPHS_NUMBER=3
-N_NODES=8
+GRAPHS_NUMBER=5
+N_NODES=12
 TRIALS_PER_GRAPH=3
+WEIGHTED=true
 #######################################
 
 
@@ -23,6 +24,7 @@ do
         --graphs-number $GRAPHS_NUMBER \
         --n-nodes $N_NODES \
         --trials-per-graph $TRIALS_PER_GRAPH \
+        --weighted $WEIGHTED \
         --run-qaoa true \
         --run-vqe false \
         &

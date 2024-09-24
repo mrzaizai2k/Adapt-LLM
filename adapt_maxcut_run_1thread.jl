@@ -39,8 +39,13 @@ function parse_commandline()
         arg_type = Int
         default = 8
         
+        "--weighted"
+        help = "Use weighted graphs. If false, all weights are set to 1."
+        arg_type = Bool
+        default = true
+        
         "--use-negative-weights"
-        help = "Use negative weights"
+        help = "Use negative weights. Even when --weighted=false, weights can still be +1 or -1."
         arg_type = Bool
         default = false
         
@@ -102,6 +107,7 @@ run_qaoa = args["run-qaoa"]
 g0 = args["g0"]
 max_layers = args["max-layers"]
 energy_tol_frac = args["energy-tol-frac"]
+weighted = args["weighted"]
 
 println("Running ADAPT with parameters (worker: $hostname, pid: $pid):")
 for (arg,val) in args
@@ -150,7 +156,7 @@ function graph_to_adj_m(g)
     return adj_matrix
 end 
 
-function rand_weigh_graph_generator(n_nodes::Int64, prob::Float64=0.5; neg_weights::Bool=true)
+function rand_weigh_graph_generator(n_nodes::Int64, prob::Float64=0.5; weighted::Bool=true, neg_weights::Bool=true)
     
     g = Graphs.erdos_renyi(n_nodes, prob)
 
@@ -158,9 +164,13 @@ function rand_weigh_graph_generator(n_nodes::Int64, prob::Float64=0.5; neg_weigh
     for e in SimpleWeightedGraphs.edges(g)
         s = SimpleWeightedGraphs.src(e)
         d = SimpleWeightedGraphs.dst(e)
-        w = round(rand(), digits=2)
-        while w == 0.0
+        if weighted
             w = round(rand(), digits=2)
+            while w == 0.0
+                w = round(rand(), digits=2)
+            end 
+        else
+            w = 1
         end 
         if neg_weights
             w_sign = rand([-1,1])
@@ -225,11 +235,11 @@ set_description(iter, "Graphs on: "*hostname*"; pid: "*string(pid)*":")
 for graph_num in iter
 
     prob = Random.rand(prob_list)
-    g = rand_weigh_graph_generator(n_nodes, prob, neg_weights=use_negative_weights)
+    g = rand_weigh_graph_generator(n_nodes, prob, weighted=weighted, neg_weights=use_negative_weights)
 
     while Graphs.ne(g) == 0
         println("Generated empty graph! Trying again")
-        g = g = rand_weigh_graph_generator(n_nodes, prob, neg_weights=use_negative_weights)
+        g = rand_weigh_graph_generator(n_nodes, prob, weighted=weighted, neg_weights=use_negative_weights)
     end
     
     e_list = graph_to_edgelist(g)
