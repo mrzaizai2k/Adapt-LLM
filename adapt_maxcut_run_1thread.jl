@@ -64,6 +64,11 @@ function parse_commandline()
         arg_type = Bool
         default = false
         
+        "--degen"
+        help = "Run Degenerate ADAPT"
+        arg_type = Bool
+        default = true
+        
         "--g0"
         help = "Gamma 0 parameter"
         arg_type = String
@@ -114,6 +119,7 @@ max_layers = args["max-layers"]
 energy_tol_frac = args["energy-tol-frac"]
 weighted = args["weighted"]
 diag_qaoa = args["run-diag-qaoa"]
+degen = args["degen"]
 
 println("Running ADAPT with parameters (worker: $hostname, pid: $pid):")
 for (arg,val) in args
@@ -280,8 +286,11 @@ for graph_num in iter
     
     # SELECT THE PROTOCOLS
     
-    #adapt = ADAPT.Degenerate_ADAPT.DEG_ADAPT
-    adapt = ADAPT.VANILLA
+    if degen
+        adapt = ADAPT.Degenerate_ADAPT.DEG_ADAPT
+    else
+        adapt = ADAPT.VANILLA
+    end
     vqe = ADAPT.OptimOptimizer(:BFGS; g_tol=1e-4)
     
     # SELECT THE CALLBACKS
@@ -344,6 +353,7 @@ for graph_num in iter
                     :energy => trace[:energy][trace[:adaptation][2:end]],
                     :energy_mqlib => exact_energy_val,
                     :took_time => sum(trace[:elapsed_time]),
+                    :success_flag => success,
                 )
                 append!(results_df, cur_res_df)
             catch err
@@ -376,7 +386,7 @@ for graph_num in iter
             trace = ADAPT.Trace()
 
             # RUN THE ALGORITHM
-            println("RUNNING ADAPT QAOA!!!")
+            #println("RUNNING ADAPT QAOA!!!")
             success = ADAPT.run!(ansatz, trace, adapt, vqe, pool, H, ψ0, callbacks)
             
             #println(success ? "Success!" : "Failure - optimization didn't converge.")
@@ -402,6 +412,7 @@ for graph_num in iter
                     :energy => trace[:energy][trace[:adaptation][2:end]],
                     :energy_mqlib => exact_energy_val,
                     :took_time => sum(trace[:elapsed_time]),
+                    :success_flag => success,
                 )
                 append!(results_df, cur_res_df)
             catch err
