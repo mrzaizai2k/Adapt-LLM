@@ -30,7 +30,7 @@ do
         --weighted $WEIGHTED \
         --run-qaoa true \
         --run-vqe false \
-        2>&1 | tee $LOG_DIR/worker_out_$HOSTNAME.log \
+        2>&1 | tee $LOG_DIR/worker_$i_out_$HOSTNAME.log \
         & 
 done
 wait
