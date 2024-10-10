@@ -261,6 +261,9 @@ end
 if !isdir(""*output_dir*"/graphs")
     mkpath(""*output_dir*"/graphs")
 end
+if !isdir(""*output_dir*"/traces")
+    mkpath(""*output_dir*"/traces")
+end
 
 start_time = time()
 
@@ -269,8 +272,10 @@ results_df = DataFrames.DataFrame()
 hams_df = DataFrames.DataFrame()
 graphs_df = DataFrames.DataFrame(
     graph_num = Int[],
-    edgelist_json = String[]
+    edgelist_json = String[],
+    H_frob_norm = Float64[],
 )
+traces_df = DataFrames.DataFrame()
 
 # main loop
 
@@ -319,21 +324,25 @@ for graph_num in iter
     
     println("\nGraph name: $cur_graph_name;\nNumber of edges: $(Graphs.ne(g));\nNumber of nodes: $(Graphs.nv(g));\nProb: $prob.\n")
     
-    push!(graphs_df, (graph_num, edgelist_json))
     
     e_exact_eig = -999.0
     
     # BUILD OUT THE PROBLEM HAMILTONIAN
     if diag_qaoa
         H_spv = ADAPT.Hamiltonians.maxcut_hamiltonian(n_nodes, e_list)
+        
+        h_frob_norm = norm(Matrix(H_spv))
         # Wrap in a QAOAObservable view.
         H = ADAPT.ADAPT_QAOA.QAOAObservable(H_spv)
     else
         H = ADAPT.Hamiltonians.maxcut_hamiltonian(n_nodes, e_list)
+        h_frob_norm = norm(Matrix(H))
         if calc_h_eigen
             e_exact_eig = exact_ground_state_energy(H, n_nodes)
         end
     end
+    
+    push!(graphs_df, (graph_num, edgelist_json, h_frob_norm))
     
     ##########
     # MQLib block
@@ -429,6 +438,15 @@ for graph_num in iter
             catch err
                @error "ERROR: " exception=(err, catch_backtrace())
             end
+            cur_trace_df = DataFrames.DataFrame(
+                :method => "vqe",
+                :graph_name => cur_graph_name,
+                :graph_num => graph_num,
+                :run => trial_num,
+                :trace_json => JSON.json(trace),
+            )
+            #println(JSON.json(trace))
+            append!(traces_df, cur_trace_df)
         end
 
         ### QAOA BLOCK ###
@@ -492,6 +510,16 @@ for graph_num in iter
             catch err
                @error "ERROR: " exception=(err, catch_backtrace())
             end
+            cur_trace_df = DataFrames.DataFrame(
+                :method => "qaoa",
+                :graph_name => cur_graph_name,
+                :graph_num => graph_num,
+                :run => trial_num,
+                :trace_json => JSON.json(trace),
+            )
+            
+            #println(JSON.json(trace))
+            append!(traces_df, cur_trace_df)
         end
     end
 
@@ -512,6 +540,10 @@ for graph_num in iter
     # WRITE GRAPHS TO A FILE
     graphs_file = ""*output_dir*"/graphs/worker_"*string(hostname)*"_pid_"*string(pid)*"_ts_"*ts_string*"_graphs_json.csv"
     CSV.write(graphs_file, graphs_df)
+    
+    # WRITE TRACES TO A FILE
+    traces_file = ""*output_dir*"/traces/worker_"*string(hostname)*"_pid_"*string(pid)*"_ts_"*ts_string*"_traces_json.csv"
+    CSV.write(traces_file, traces_df)
     
 end
 
