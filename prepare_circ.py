@@ -17,15 +17,21 @@ tqdm.pandas()
 
 parser = argparse.ArgumentParser(description='Parser for ADAPT GPT circuit preparation.')
 parser.add_argument('--adapt_results_dir', type=str, help='Path to read results from')
+parser.add_argument('--debug_limit', default=0, type=int, help='Number of input files to sample for speed up (debugging)')
 parser.add_argument('--save_dir', type=str, help='Path to save files')
 parser.add_argument('--rounding_digits', type=int, default=2, help='Number of digits to round to')
 parser.add_argument('--val_frac', type=float, default=0.1, help='Validation fraction')
 parser.add_argument('--test_frac', type=float, default=0.1, help='Test fraction')
-parser.add_argument('--approx_ratio_thr', type=float, default=0.98, help='Approximation ratio threshold')
+parser.add_argument('--approx_ratio_thr', type=float, default=0.97, help='Approximation ratio threshold')
 parser.add_argument('--max_abs_param_val', type=float, default=10, help='Maximum absolute value of gamma and betta params')
+parser.add_argument('--perform_coef_mod_range', type=int, default=False, help='Wrap beta to [0; pi] range; 1 is true (default), 0 is false')
 
 # Parse the arguments
 args = parser.parse_args()
+
+print("Preparing ADAPT circuits for GPT training with the following arguments:")
+for arg, value in vars(args).items():
+    print(f"\t{arg}: {value}")
 
 results_fpath_str = args.adapt_results_dir
 save_path_str = args.save_dir
@@ -34,6 +40,11 @@ val_frac = args.val_frac
 test_frac = args.test_frac
 approx_ratio_thr = args.approx_ratio_thr
 max_abs_param_val = args.max_abs_param_val
+perform_coef_mod_range = bool(args.perform_coef_mod_range)
+debug_limit = args.debug_limit
+
+if debug_limit:
+    print(f'For debugging purposes, limit input results to {debug_limit} files.')
 
 results_fpath = Path(results_fpath_str)
 save_path = Path(save_path_str)
@@ -50,17 +61,18 @@ for res_fpath in results_folders_list:
     
 df_list = []
 for cur_dataset_res_path in results_folders_list:
-    cur_dataset_res_flist = list(cur_dataset_res_path.joinpath('res').glob('*.csv'))
+    cur_dataset_res_flist = sorted(cur_dataset_res_path.joinpath('res').glob('*.csv'))
+    if debug_limit:
+        cur_dataset_res_flist = cur_dataset_res_flist[:debug_limit]
     for fname in tqdm(cur_dataset_res_flist, desc='Opening ADAPT results'):
-        cur_df = pd.read_csv(fname)
-        cur_df['worker_id'] = fname.stem
-        df_list.append(cur_df)
+        try:
+            cur_df = pd.read_csv(fname)
+            cur_df['worker_id'] = fname.stem
+            df_list.append(cur_df)
+        except Exception as e:
+            print(f'{e} (file: {fname})')
 
 full_run_df = pd.concat(df_list)
-full_run_df['Layer_p'] = (
-    full_run_df.groupby(['graph_num', "run", "worker_id"])
-        .cumcount()
-)
 full_run_df['prefix'] = full_run_df['worker_id'].apply(
     lambda x: x[:-15]
 )
@@ -68,7 +80,9 @@ full_run_df['prefix'] = full_run_df['worker_id'].apply(
 ## Graphs
 df_list = []
 for cur_dataset_res_path in results_folders_list:
-    cur_dataset_res_flist = list(cur_dataset_res_path.joinpath('graphs').glob('*.csv'))
+    cur_dataset_res_flist = sorted(cur_dataset_res_path.joinpath('graphs').glob('*.csv'))
+    if debug_limit:
+        cur_dataset_res_flist = cur_dataset_res_flist[:debug_limit]
     for fname in tqdm(cur_dataset_res_flist, desc='Opening graphs'):
         cur_df = pd.read_csv(fname)
         cur_df['worker_id'] = fname.stem
@@ -104,30 +118,72 @@ full_run_df['approx_ratio'] = (
     full_run_df['energy'] / full_run_df['energy_mqlib']
 )
 
+# full_run_agg_stat_df = (
+#     full_run_df.groupby(
+#         ["graph_num", "run", "prefix"]
+#     )
+#     .agg(
+#         {
+#             'pooltype': 'count',
+#             'energy': list,
+#             'took_time': 'last',
+#             'energy_mqlib': 'last',
+#             'generator_index_in_pool': list,
+#             'approx_ratio': 'last',
+#             'β_coeff': list,
+#             'γ_coeff': list,
+#             'energy_mqlib': 'last'
+#         }
+#     )
+#     .reset_index()
+#     .rename(
+#         columns={
+#             'pooltype': 'n_layers',
+#             'energy': 'energy_list',
+#             #'took_time': 'took_time',
+#             'generator_index_in_pool': 'op_list'
+#         }
+#     )
+# )
+
 full_run_agg_stat_df = (
     full_run_df.groupby(
-        ["graph_num", "run", "prefix"]
+        [
+            #"graph_name",
+            "graph_num", "run", "prefix", "method",
+            'optimizer',
+            "gamma0", "pooltype", "graph_name", 'n_nodes']
     )
     .agg(
         {
-            'pooltype': 'count',
+            #'pooltype': 'count',
             'energy': list,
+            #'method': 'last',
             'took_time': 'last',
             'energy_mqlib': 'last',
             'generator_index_in_pool': list,
             'approx_ratio': 'last',
+            #'approx_ratio_eig': 'last',
+            'edge_weight_norm_coef': 'last',
             'β_coeff': list,
             'γ_coeff': list,
-            'energy_mqlib': 'last'
+            'coeff': list,
+            'energy_mqlib': 'last',
+            'energy_eigen': 'last',
+            #'n_nodes': 'last',
+            'cut_mqlib': 'last',
+            'cut_adapt': 'last',
+            'cut_eig': 'last',
+            'state_vect_adapt': 'last',
+            'success_flag': 'last'
         }
     )
     .reset_index()
     .rename(
         columns={
-            'pooltype': 'n_layers',
+            'pooltype': 'pooltype',
             'energy': 'energy_list',
-            #'took_time': 'took_time',
-            'generator_index_in_pool': 'op_list'
+            'generator_index_in_pool': 'op_list',
         }
     )
 )
@@ -138,6 +194,7 @@ combined_res_df = pd.merge(
     left_on=['prefix', 'graph_num'],
     right_on=['prefix', 'graph_num'],
 )
+combined_res_df["n_layers"] = combined_res_df['energy_list'].apply(len)
 
 combined_res_df['graph_id'] = (
       combined_res_df['prefix']
@@ -219,7 +276,11 @@ token_to_int_idx_dict = {v:k for k,v in int_idx_to_token_dict.items()}
 vocab_size = len(int_idx_to_token_dict)
 print(f"\tTotal tokens in vocab: {vocab_size}")
 
-def tokenize_row(row):
+def julia_mod(a, b):
+    result = a % b
+    return result if a >= 0 else result - b
+
+def tokenize_row(row, coef_mod=True):
 
     tokens_seq_list = ['bos']
 
@@ -236,6 +297,9 @@ def tokenize_row(row):
         tokens_seq_list.append(row['op_list'][p])
 
         cur_beta = row['β_coeff'][p]
+        if coef_mod:
+            # cur_beta = cur_beta % (np.pi)
+            cur_beta = julia_mod(cur_beta, np.pi)
         if cur_beta > -max_abs_param_val and cur_beta < max_abs_param_val:
             cur_beta_round = round(cur_beta, rounding_digits)
             tokens_seq_list.append(cur_beta_round)
@@ -243,6 +307,8 @@ def tokenize_row(row):
             return None
 
         cur_gamma = row['γ_coeff'][p]
+        # if coef_mod:
+        #     cur_gamma = cur_gamma % (2*np.pi)
         if cur_gamma > -max_abs_param_val and cur_gamma < max_abs_param_val:
             cur_gamma_round = round(cur_gamma, rounding_digits)
             tokens_seq_list.append(cur_gamma_round)
@@ -254,7 +320,7 @@ def tokenize_row(row):
     return tokens_seq_list
 
 combined_res_df[f'token_seq_round_d{rounding_digits}'] = combined_res_df.progress_apply(
-    tokenize_row,
+    lambda x: tokenize_row(x, coef_mod=perform_coef_mod_range),
     axis=1
 )
 combined_res_tok_df = combined_res_df.dropna()
