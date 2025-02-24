@@ -20,11 +20,13 @@ parser.add_argument('--adapt_results_dir', type=str, help='Path to read results 
 parser.add_argument('--debug_limit', default=0, type=int, help='Number of input files to sample for speed up (debugging)')
 parser.add_argument('--save_dir', type=str, help='Path to save files')
 parser.add_argument('--rounding_digits', type=int, default=2, help='Number of digits to round to')
+parser.add_argument('--block_size', type=int, default=128, help='GPT capacity')
 parser.add_argument('--val_frac', type=float, default=0.1, help='Validation fraction')
 parser.add_argument('--test_frac', type=float, default=0.1, help='Test fraction')
 parser.add_argument('--approx_ratio_thr', type=float, default=0.97, help='Approximation ratio threshold')
 parser.add_argument('--max_abs_param_val', type=float, default=10, help='Maximum absolute value of gamma and betta params')
 parser.add_argument('--perform_coef_mod_range', type=int, default=False, help='Wrap beta to [0; pi] range; 1 is true (default), 0 is false')
+parser.add_argument('--apply_sliding_window', type=bool, default=True, action=argparse.BooleanOptionalAction, help='Apply sliding window to generate training samples')
 
 # Parse the arguments
 args = parser.parse_args()
@@ -42,6 +44,8 @@ approx_ratio_thr = args.approx_ratio_thr
 max_abs_param_val = args.max_abs_param_val
 perform_coef_mod_range = bool(args.perform_coef_mod_range)
 debug_limit = args.debug_limit
+block_size = args.block_size
+apply_sliding_window = args.apply_sliding_window
 
 if debug_limit:
     print(f'For debugging purposes, limit input results to {debug_limit} files.')
@@ -229,6 +233,7 @@ tokens_list = []
 
 ## Special symbols
 special_symbols_list = [
+    'pad',
     'bos',
     'eos',
     'new_layer_p',
@@ -262,7 +267,7 @@ print(f"\tTotal tokens for coefs: {len(all_coefs_round_set)}")
 
 ## Operator pool
 ops_list = []
-for l in combined_res_df['op_list']:
+for l in combined_res_filt_df['op_list']:
     ops_list += l
 
 ops_list = list(set(ops_list))
@@ -319,11 +324,11 @@ def tokenize_row(row, coef_mod=True):
     
     return tokens_seq_list
 
-combined_res_df[f'token_seq_round_d{rounding_digits}'] = combined_res_df.progress_apply(
+combined_res_filt_df[f'token_seq_round_d{rounding_digits}'] = combined_res_filt_df.progress_apply(
     lambda x: tokenize_row(x, coef_mod=perform_coef_mod_range),
-    axis=1
+    axis=1,
 )
-combined_res_tok_df = combined_res_df.dropna()
+combined_res_tok_df = combined_res_filt_df.dropna()
 combined_res_tok_df[f'token_int_seq_round_d{rounding_digits}'] = (
     combined_res_tok_df[f'token_seq_round_d{rounding_digits}'].progress_apply(
         lambda x: [token_to_int_idx_dict[token] for token in x]
@@ -335,11 +340,14 @@ combined_res_tok_df[f'token_int_seq_round_d{rounding_digits}'] = (
 print("Preparing training data...")
 
 n = len(combined_res_tok_df)
+
 combined_res_tok_shf_df = (
     combined_res_tok_df
         .sample(frac=1)
         .reset_index(drop=True)
 )
+print(f"combined_res_tok_df shape: {combined_res_tok_df.shape}")
+print(f"combined_res_tok_shf_df shape: {combined_res_tok_shf_df.shape}")
 
 graph_ids = combined_res_tok_shf_df['graph_id'].drop_duplicates().to_list()
 
@@ -358,11 +366,45 @@ assert len(train_graph_ids_set.intersection(val_graph_ids_set)) == 0
 assert len(train_graph_ids_set.intersection(test_graph_ids_set)) == 0
 assert len(val_graph_ids_set.intersection(test_graph_ids_set)) == 0
 
+
+def sliding_window(numbers, block_size):
+
+    if block_size >= len(numbers):
+        window_len = len(numbers)
+        window = numbers[:-1] + [0]*(block_size - window_len + 1)
+        window_shifted = numbers[1:] + [0]*(block_size - window_len + 1)        
+        return [
+            [window, window_shifted]
+        ]
+    
+    result_dict_list = []
+    result = []
+    for i in range(0, len(numbers) - block_size + 1):
+        window = numbers[i:i + block_size]
+        result.append(window)
+        
+    for x, y in zip(result, result[1:]):
+        result_dict_list.append(
+            [x,y]
+        )
+    
+    return result_dict_list
+
+
 # Assign the 'label' column based on the split
 combined_res_tok_shf_df['label'] = 'train'
 combined_res_tok_shf_df.loc[combined_res_tok_shf_df['graph_id'].isin(val_graph_ids_set), 'label'] = 'val'
 combined_res_tok_shf_df.loc[combined_res_tok_shf_df['graph_id'].isin(test_graph_ids_set), 'label'] = 'test'
 
+if apply_sliding_window:
+    print('Applying sliding window...')
+    combined_res_tok_shf_df[f'token_int_seq_round_d{rounding_digits}_sw'] = combined_res_tok_shf_df[f'token_int_seq_round_d{rounding_digits}'].progress_apply(
+        lambda x: sliding_window(
+            x,
+            block_size=block_size,
+        )
+    )
+    
 train_data = combined_res_tok_shf_df[
     combined_res_tok_shf_df['label'] == 'train'
 ]
@@ -375,28 +417,47 @@ test_data = combined_res_tok_shf_df[
 
 print(f"\tNumber of training samples: {len(train_data)}, val samples: {len(val_data)}, test samples: {len(test_data)}")
 
-train_data_conc = []
-for l in train_data[f'token_int_seq_round_d{rounding_digits}']:
-    train_data_conc += l
-train_data_conc_np = np.array(train_data_conc, dtype=np.uint16)
+if apply_sliding_window:
 
-val_data_conc = []
-for l in val_data[f'token_int_seq_round_d{rounding_digits}']:
-    val_data_conc += l
-val_data_conc_np = np.array(val_data_conc, dtype=np.uint16)
+    train_data_conc = []
+    for l in train_data[f'token_int_seq_round_d{rounding_digits}_sw']:
+        train_data_conc += l
+    train_data_conc_np = np.array(train_data_conc, dtype=np.uint16)
+    print("shape:", train_data_conc_np.shape)
 
-test_data_conc = []
-for l in test_data[f'token_int_seq_round_d{rounding_digits}']:
-    test_data_conc += l
-test_data_conc_np = np.array(test_data_conc, dtype=np.uint16)
+    val_data_conc = []
+    for l in val_data[f'token_int_seq_round_d{rounding_digits}_sw']:
+        val_data_conc += l
+    val_data_conc_np = np.array(val_data_conc, dtype=np.uint16)
+
+    test_data_conc = []
+    for l in test_data[f'token_int_seq_round_d{rounding_digits}_sw']:
+        test_data_conc += l
+    test_data_conc_np = np.array(test_data_conc, dtype=np.uint16)
 
 
-print(f"\tTrain has {len(train_data_conc_np):,} tokens")
-print(f"\tVal has {len(val_data_conc_np):,} tokens")
-print(f"\tTest has {len(test_data_conc_np):,} tokens")
+    print(f"\tTrain has {len(train_data_conc_np):,} tokens")
+    print(f"\tVal has {len(val_data_conc_np):,} tokens")
+    print(f"\tTest has {len(test_data_conc_np):,} tokens")
 
 # Saving
+
 save_path.mkdir(parents=True, exist_ok=True)
+
+if apply_sliding_window:
+    
+    np.save(
+        save_path.joinpath('train.npy'),
+        train_data_conc_np
+    )
+    np.save(
+        save_path.joinpath('val.npy'),
+        val_data_conc_np
+    )
+    np.save(
+        save_path.joinpath('test.npy'),
+        test_data_conc_np
+    )
 
 combined_res_df.to_pickle(
     save_path.joinpath('combined_res_df.pkl')
@@ -405,10 +466,6 @@ combined_res_df.to_pickle(
 combined_res_tok_shf_df.to_pickle(
     save_path.joinpath('combined_res_tok_shf_df.pkl')
 )
-
-train_data_conc_np.tofile(save_path.joinpath('train.bin'))
-val_data_conc_np.tofile(save_path.joinpath('val.bin'))
-test_data_conc_np.tofile(save_path.joinpath('test.bin'))
 
 meta = {
     'vocab_size': vocab_size,
@@ -427,7 +484,8 @@ with open('train_adapt_gpt_config_template.py') as f:
 dataset_name = save_path.stem
 config_to_save_str = config_template_str.format(
     out_dir=f'out-{dataset_name}',
-    dataset=dataset_name
+    dataset=dataset_name,
+    block_size=block_size,
 )
 
 with open(save_path.joinpath('train_adapt_gpt_config.py'), 'w') as f:
