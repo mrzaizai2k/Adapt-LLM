@@ -20,7 +20,8 @@ parser.add_argument('--adapt_results_dir', type=str, help='Path to read results 
 parser.add_argument('--debug_limit', default=0, type=int, help='Number of input files to sample for speed up (debugging)')
 parser.add_argument('--save_dir', type=str, help='Path to save files')
 parser.add_argument('--rounding_digits', type=int, default=2, help='Number of digits to round to')
-parser.add_argument('--block_size', type=int, default=128, help='GPT capacity')
+parser.add_argument('--min_block_size', type=int, default=128, help='min sequence length in sliding window')
+parser.add_argument('--max_block_size', type=int, default=256, help='nanoGPT block size')
 parser.add_argument('--val_frac', type=float, default=0.1, help='Validation fraction')
 parser.add_argument('--test_frac', type=float, default=0.1, help='Test fraction')
 parser.add_argument('--approx_ratio_thr', type=float, default=0.97, help='Approximation ratio threshold')
@@ -44,7 +45,8 @@ approx_ratio_thr = args.approx_ratio_thr
 max_abs_param_val = args.max_abs_param_val
 perform_coef_mod_range = bool(args.perform_coef_mod_range)
 debug_limit = args.debug_limit
-block_size = args.block_size
+min_block_size = args.min_block_size
+max_block_size = args.max_block_size
 apply_sliding_window = args.apply_sliding_window
 
 if debug_limit:
@@ -346,6 +348,8 @@ combined_res_tok_shf_df = (
         .sample(frac=1)
         .reset_index(drop=True)
 )
+
+print(f"combined_res_df shape: {combined_res_df.shape}")
 print(f"combined_res_tok_df shape: {combined_res_tok_df.shape}")
 print(f"combined_res_tok_shf_df shape: {combined_res_tok_shf_df.shape}")
 
@@ -366,29 +370,49 @@ assert len(train_graph_ids_set.intersection(val_graph_ids_set)) == 0
 assert len(train_graph_ids_set.intersection(test_graph_ids_set)) == 0
 assert len(val_graph_ids_set.intersection(test_graph_ids_set)) == 0
 
+def pad_with_zeros(seq, target_len):
+    pad_len = target_len - len(seq)
+    if pad_len > 0:
+        padded_seq = seq + [0]*pad_len
+    else:
+        padded_seq = seq
+        
+    if len(padded_seq) !=max_block_size:
+        print(f"padded_seq len: {len(padded_seq)}")
+    return padded_seq
 
-def sliding_window(numbers, block_size):
+def sliding_window(numbers, min_block_size, max_block_size):
+    
+    if min_block_size != max_block_size:
+        block_size = random.randint(min_block_size, max_block_size)
+    else:
+        block_size = min_block_size
 
     if block_size >= len(numbers):
-        window_len = len(numbers)
-        window = numbers[:-1] + [0]*(block_size - window_len + 1)
-        window_shifted = numbers[1:] + [0]*(block_size - window_len + 1)        
+        window = numbers[:-1]
+        window_shifted = numbers[1:]   
         return [
-            [window, window_shifted]
+            [
+                pad_with_zeros(window, target_len=max_block_size),
+                pad_with_zeros(window_shifted, target_len=max_block_size)
+            ]
         ]
     
-    result_dict_list = []
+    result_xy_list = []
     result = []
     for i in range(0, len(numbers) - block_size + 1):
         window = numbers[i:i + block_size]
         result.append(window)
         
     for x, y in zip(result, result[1:]):
-        result_dict_list.append(
-            [x,y]
+        result_xy_list.append(
+            [
+                pad_with_zeros(x, target_len=max_block_size),
+                pad_with_zeros(y, target_len=max_block_size)
+            ]
         )
     
-    return result_dict_list
+    return result_xy_list
 
 
 # Assign the 'label' column based on the split
@@ -401,7 +425,8 @@ if apply_sliding_window:
     combined_res_tok_shf_df[f'token_int_seq_round_d{rounding_digits}_sw'] = combined_res_tok_shf_df[f'token_int_seq_round_d{rounding_digits}'].progress_apply(
         lambda x: sliding_window(
             x,
-            block_size=block_size,
+            min_block_size=min_block_size,
+            max_block_size=max_block_size
         )
     )
     
@@ -485,7 +510,7 @@ dataset_name = save_path.stem
 config_to_save_str = config_template_str.format(
     out_dir=f'out-{dataset_name}',
     dataset=dataset_name,
-    block_size=block_size,
+    block_size=max_block_size,
 )
 
 with open(save_path.joinpath('train_adapt_gpt_config.py'), 'w') as f:
