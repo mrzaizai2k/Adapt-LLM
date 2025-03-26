@@ -37,6 +37,7 @@ parser.add_argument('--perform_coef_mod_range', type=int, default=False, help='W
 parser.add_argument('--apply_sliding_window', type=bool, default=True, action=argparse.BooleanOptionalAction, help='Apply sliding window to generate training samples')
 parser.add_argument('--apply_feather_graph', type=bool, default=True, action=argparse.BooleanOptionalAction, help='Apply feather graph to generate graph embeddings')
 parser.add_argument('--n_workers', type=int, default=1, help='Number of workers to use to process ADAPT results')
+parser.add_argument('--skip_only_qaoa_circ', type=bool, default=False, action=argparse.BooleanOptionalAction, help='Exclude circuits with only QAOA mixer present')
 
 # Parse the arguments
 args = parser.parse_args()
@@ -60,6 +61,7 @@ apply_sliding_window = args.apply_sliding_window
 apply_feather_graph = args.apply_feather_graph
 n_workers = args.n_workers
 n_nodes = args.n_nodes
+skip_only_qaoa_circ = args.skip_only_qaoa_circ
 
 if debug_limit:
     print(f'For debugging purposes, limit input results to {debug_limit} files.')
@@ -213,6 +215,10 @@ combined_res_df['graph_id'] = (
     + combined_res_df['graph_num'].astype(str)
 )
 
+combined_res_df['only_qaoa_circ'] = combined_res_df['op_list'].progress_apply(
+    lambda x: all(e == n_nodes+1 for e in x)
+)
+
 #-----------------------#
 # Graph embedding
 print("Applying FEATHER graph embedding...")
@@ -221,6 +227,7 @@ combined_unique_graphs_df = (
     combined_res_df[['graph_id', 'edgelist_json']]
         .drop_duplicates()
 )
+
 
 def create_weighted_graph_nx(w_elist):
     G = nx.Graph()
@@ -283,12 +290,12 @@ combined_res_df['has_emb'] = combined_res_df['graph_id'].apply(
 print("Selecting suitable ansatz...")
 
 combined_res_filt_df = combined_res_df[
-    (
-        combined_res_df['β_coeff'].apply(
-            lambda x: all([abs(coef) < max_abs_param_val for coef in x])
-        )
-    )
-    &
+    # (
+    #     combined_res_df['β_coeff'].apply(
+    #         lambda x: all([abs(coef) < max_abs_param_val for coef in x])
+    #     )
+    # )
+    # &
     (
         combined_res_df['γ_coeff'].apply(
             lambda x: all([abs(coef) < max_abs_param_val for coef in x])
@@ -299,6 +306,15 @@ combined_res_filt_df = combined_res_df[
         combined_res_df['approx_ratio'] > approx_ratio_thr
     )
 ]
+
+if skip_only_qaoa_circ:
+    print("Filtering out only QAOA circuits...")
+    n_only_qaoa_circ = combined_res_filt_df['only_qaoa_circ'].sum()
+    print(f"Removing {n_only_qaoa_circ} out of total {len(combined_res_filt_df)}")
+    combined_res_filt_df = combined_res_filt_df[
+        combined_res_filt_df['only_qaoa_circ'] == False
+    ]
+    
 
 # Tokenization
 print("Tokenizing...")
@@ -580,6 +596,21 @@ combined_res_tok_shf_df.to_pickle(
     save_path.joinpath('combined_res_tok_shf_df.pkl')
 )
 
+sample_size_per_w_bucket = 25
+val_data_sampled = (
+    val_data[
+          (~val_data['token_seq_round_d2'].isna())
+    ]
+    .groupby('edgelist_list_len').apply(
+        lambda x: x.sample(sample_size_per_w_bucket) if len(x) > sample_size_per_w_bucket else None
+    )
+    .reset_index(drop=True)
+)
+
+val_data_sampled.to_pickle(
+    save_path.joinpath('combined_res_tok_shf_val_df.pkl')
+)
+
 emb_size = feather_par_emb.shape[1]
 np.save(
     save_path.joinpath(f'feather_emb_d{emb_size}.npy'),
@@ -605,11 +636,15 @@ pd.to_pickle(
 with open('train_adapt_gpt_config_template.py') as f:
     config_template_str = f.read()
 
+pool_type = combined_res_df['pooltype'].iloc[0]
+
 dataset_name = save_path.stem
 config_to_save_str = config_template_str.format(
     out_dir=f'out-{dataset_name}',
     dataset=dataset_name,
     block_size=max_block_size,
+    use_graph_emb="True",
+    pool_type=pool_type,
 )
 
 with open(save_path.joinpath('train_adapt_gpt_config.py'), 'w') as f:
