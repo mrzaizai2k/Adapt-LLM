@@ -17,32 +17,63 @@ from matplotlib import pyplot as plt
 from collections import defaultdict
 from pathlib import Path
 
-from util import generate_circ_from_df, eval_adapt_gpt_circ_jl
+from util import (
+    generate_circ_from_df,
+    eval_adapt_gpt_circ_jl,
+    prepare_model_input
+)
 
-class AdaptGPT():
+class QAOA_GPT():
     def __init__(
         self,
-        out_dir,
-        model_name,
+        model_ckpt,
+        config_file,
         data_dir,
-        use_graph_emb,
-        n_nodes,
-        temp_folder='adapt_gpt_temp_data'
+        device, # examples: 'cpu', 'cuda', 'cuda:0', 'cuda:1', etc.
+        n_nodes='infer',
+        temp_folder='adapt_gpt_temp_data',
     ):
+        
+        config_fpath = Path(config_file)
+        assert config_fpath.is_file()
 
-        self.out_dir = Path(out_dir)
-        self.model_name = model_name
+        print(f"Loading config from: {config_fpath}")
+        config_vars = {}
+        with open(config_fpath) as f:
+            exec(f.read(), config_vars)
+
+        self.pool_type = config_vars['pool_type']
+        self.use_graph_emb = config_vars['use_graph_emb']
+
+        if 'n_nodes' not in config_vars:
+            if n_nodes == 'infer':
+                raise AttributeError(
+                    """Number of nodes is not found in the provided config.
+                    You need to supply it as an argument in AdaptGPT constructor:
+                    AdaptGPT(..., n_nodes=<N>,...)
+                    """
+                )
+            else:
+                assert type(n_nodes) == int
+                self.n_nodes = n_nodes
+        else:
+            self.n_nodes = config_vars['n_nodes']
+
+        #self.out_dir = Path(out_dir)
         self.data_dir = Path(data_dir)
-        self.use_graph_emb = use_graph_emb
+        self.model_ckpt = Path(model_ckpt)
         self.temp_folder = Path(temp_folder)
         
         self.seed = 1337
         self.init_from = 'resume' # either 'resume' (from an out_dir) or a gpt2 variant (e.g. 'gpt2-xl')
-        self.device = 'cuda' # examples: 'cpu', 'cuda', 'cuda:0', 'cuda:1', etc.
-        self.dtype = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16' # 'float32' or 'bfloat16' or 'float16'
+        self.device = device
+        if self.device == 'cuda':
+            if torch.cuda.is_available() and torch.cuda.is_bf16_supported():
+                self.dtype = 'bfloat16'
+        else:
+            self.dtype = 'float16'
+        
         self.compile = False # use PyTorch 2.0 to compile the model to be faster
-        #exec(open(nanogpt_path.joinpath('configurator.py')).read()) # overrides from command line or config file
-        # -----------------------------------------------------------------------------
         
         torch.manual_seed(self.seed)
         torch.cuda.manual_seed(self.seed)
@@ -54,30 +85,24 @@ class AdaptGPT():
 
         self.meta = pd.read_pickle(f'{data_dir}/meta.pkl')
 
-        if use_graph_emb:
+        if self.use_graph_emb:
             self.gptconfig = GPTConfig_gemb
             self.gpt = GPT_gemb
         else:
             self.gptconfig = GPTConfig_nogemb
             self.gpt = GPT_nogemb
 
-        self.model = self.open_model(
-            self.out_dir,
-            self.model_name
-        )
+        self.model = self.open_model(self.model_ckpt)
             
         return None
 
     def open_model(
         self,
-        out_dir,
-        model_name,
+        model_fpath,
     ):
         # init from a model saved in a specific directory
-        out_path = Path(out_dir)
-    
-        ckpt_path = out_path / model_name
-        checkpoint = torch.load(ckpt_path, map_location=self.device)
+        out_path = Path(model_fpath)
+        checkpoint = torch.load(out_path, map_location=self.device)
         gptconf = self.gptconfig(**checkpoint['model_args'])
         model = self.gpt(gptconf)
         state_dict = checkpoint['model']
@@ -88,20 +113,73 @@ class AdaptGPT():
         model.load_state_dict(state_dict)
         model.eval()
         model.to(self.device)
-    
-        print()
-    
+        
         return model
-
-    def extract_graph(self, token_seq):
-        graph_seq = []
     
-        for idx, tok in enumerate(token_seq):
-            graph_seq.append(tok)
-            if tok == 'end_of_graph':
-                break
-        adapt_seq = token_seq[idx+1:-1]
-        return graph_seq, adapt_seq 
+    def generate_circ_from_nx(
+        self,
+        graphs_container,
+        calculate_classic_maxcut=True,
+        n_samples_per_batch=50, # max number of distinct graphs in a batch
+        num_samples=5, # number of samples to draw
+        max_new_tokens=150, # number of tokens generated in each sample
+        temperature=0.1, # 1.0 = no change, < 1.0 = less random, > 1.0 = more random, in predictions
+        top_k=200, # retain only the top_k most likely tokens, clamp others to have 0 probability
+    ):
+        graphs_nx_df, feather_par_emb, emb_graph_id_to_idx_dict = prepare_model_input(
+            graphs_container,
+            n_nodes=self.n_nodes,
+            calculate_classic_maxcut=calculate_classic_maxcut,
+        )
+
+        gc_df = generate_circ_from_df(
+            graphs_nx_df,
+            graph_emb_np=feather_par_emb,
+            emb_graph_id_to_idx_dict=emb_graph_id_to_idx_dict,
+            meta=self.meta,
+            model=self.model,
+            device=self.device,
+            ctx=self.ctx,
+            n_samples_per_batch=n_samples_per_batch,
+            num_samples=num_samples,
+            max_new_tokens=max_new_tokens,
+            temperature=temperature,
+            top_k=top_k,
+            token_seq_col='token_seq_round_d2',
+            normalize_weights_flag=False,
+        )
+
+        return gc_df
+
+    def eval_circ_df_jl(
+        self,
+        qaoa_gpt_circ_df,
+        adapt_gpt_path='.'
+    ):
+        qaoa_gpt_circ_eval_df = eval_adapt_gpt_circ_jl(
+            qaoa_gpt_circ_df,
+            n_nodes=self.n_nodes,
+            adapt_gpt_path=adapt_gpt_path,
+            temp_folder=self.temp_folder,
+            pool_type=self.pool_type
+        )
+
+        output_columns_list =[
+            "graph_prefix",
+            "graph",
+            "n_edges",
+            "q_circuits",
+            "adapt_gpt_energies"
+        ]
+
+        if "energy_mqlib" in qaoa_gpt_circ_df.columns:
+            output_columns_list.append("energy_mqlib")
+
+        if "energy_gurobi" in qaoa_gpt_circ_df.columns:
+            output_columns_list.append("energy_gurobi")
+        
+        return qaoa_gpt_circ_eval_df[output_columns_list]
+    
         
         
         

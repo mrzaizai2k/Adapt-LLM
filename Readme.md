@@ -19,16 +19,15 @@ Our work is still in progress, stay tuned!
 **Running**:
 
 The pipeline is run as follows:
-1. Generate graph-circuit pairs with ADAPT.jl
+1. Generate graph-circuit pairs with ADAPT.jl:
 	- Run multithreaded ADAPT (you can edit the `adapt_maxcut_run_multithread.sh` script to adjust the parameters): `./adapt_maxcut_run_multithread.sh`
 	- Note: for a meaningful GPT model, we need at least 50k circuits. This number usually requires a CPU-based cluster.
 2. Tokenize them and prepare for GPT training:
 	- Run: `python prepare_circ.py --adapt_results_dir <ADAPT_RESULTS_DIR> --save_dir <SAVING_DIR> --n_nodes <N_NODES>`, where `<N_NODES>` is the problem size (qubits/graph nodes) for all circuits in the dataset.
 	- Note: nanoGPT expects `<SAVING_DIR>` to be a folder inside `nanoGPT/data`
-3. Train GPT model
+3. Train GPT model:
 	1. Go to nanoGPT directory: `cd nanoGPT/`
-	2. Run: `python train.py <SAVING_DIR>/train_adapt_gpt_config.py`
-4. Evaluate the results
-	1. Generate circuits with the trained model. Notebook: `adapt_gpt_gen_py.ipynb`
-	2. Get their energy estimations with ADAPT. For that run: `julia --project=ADAPT.jl/ adapt_gpt_eval_energy.jl <input_fpath> <output_fpath> <n_nodes>`
-	3. Visualize results. Notebook: `adapt_gpt_vis_results_py.ipynb` 
+	2. Run: `python train_pad_gemb_ar_eval.py <SAVING_DIR>/train_adapt_gpt_config.py`
+4. Use a pre-trained model for inference:
+	1. Generate circuits for random graphs and evaluate them with ADAPT.jl. Notebook: `qaoa_gpt_inference_demo.ipynb`
+
