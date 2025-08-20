@@ -1,6 +1,8 @@
-# ADAPT GPT Quick start guide
+# QAOA-GPT
 
-Our work is still in progress, stay tuned!
+This repo contains code for the work: [QAOA-GPT: Efficient Generation of Adaptive and Regular Quantum Approximate Optimization Algorithm Circuits](https://arxiv.org/abs/2504.16350).
+
+## Quick Start Guide
 
 **Installing**:
 - Julia part:
@@ -31,3 +33,20 @@ The pipeline is run as follows:
 4. Use a pre-trained model for inference:
 	1. Generate circuits for random graphs and evaluate them with ADAPT.jl. Notebook: `qaoa_gpt_inference_demo.ipynb`
 
+## Data Availability 
+
+Pre-trained models that we used to generate results in our paper are available here: [Google Drive Link](https://drive.google.com/drive/folders/1ddMW1iLYlhd_Nb-ZyRFY1ktdZ9tDlNjQ).
+
+## Citing 
+
+If you found our work useful, please cite [our paper](https://arxiv.org/abs/2504.16350) (accepted at IEEE International Conference on Quantum Computing and Engineering 2025 - QCE25, proceedings will be available later):
+
+```
+@article{tyagin2025qaoa,
+  title={QAOA-GPT: Efficient Generation of Adaptive and Regular Quantum Approximate Optimization Algorithm Circuits},
+  author={Tyagin, Ilya and Farag, Marwa H and Sherbert, Kyle and Shirali, Karunya and Alexeev, Yuri and Safro, Ilya},
+  journal={arXiv preprint arXiv:2504.16350},
+  year={2025}
+}
+
+```
