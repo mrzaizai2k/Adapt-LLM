@@ -20,3 +20,5 @@ __pycache__/
 
 # Exclude Jupyter notebook checkpoints
 .ipynb_checkpoints/
+
+temp_data/

@@ -204,6 +204,11 @@ def generate_circ_from_df(
         for n_edges, cur_adapt_gpt_out_list in adapt_gpt_out_list_dict.items():
             adapt_gpt_test_samples_list += cur_adapt_gpt_out_list
 
+        # Early exit if empty
+        if len(adapt_gpt_test_samples_list) == 0:
+            print("Warning: No graphs to process. Returning empty DataFrame.")
+            return pd.DataFrame()
+
     for idx in range(len(adapt_gpt_test_samples_list)):
         q_circ_filt_list = []
         for circ in adapt_gpt_test_samples_list[idx]['q_circuits']:

@@ -1,3 +1,6 @@
+import sys
+sys.path.append("")
+
 import pickle
 from contextlib import nullcontext
 import torch
@@ -142,11 +145,16 @@ class QAOA_GPT():
             calculate_classic_maxcut=calculate_classic_maxcut,
         )
 
+        self.graphs_nx_df = graphs_nx_df
+        self.feather_par_emb = feather_par_emb
+        self.emb_graph_id_to_idx_dict = emb_graph_id_to_idx_dict
+
         if self.device == 'cpu':
             emb_dtype = "float"
         else:
             emb_dtype = self.dtype
-            
+        
+
         gc_df = generate_circ_from_df(
             graphs_nx_df,
             graph_emb_np=feather_par_emb,
@@ -154,7 +162,7 @@ class QAOA_GPT():
             meta=self.meta,
             model=self.model,
             device=self.device,
-            ctx=self.ctx,
+            ctx=self.ctx, # what is this
             n_samples_per_batch=n_samples_per_batch,
             num_samples=num_samples,
             max_new_tokens=max_new_tokens,

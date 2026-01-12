@@ -25,7 +25,7 @@ output_fpath = ARGS[2]
 n_nodes = parse(Int, ARGS[3])
 pool_type = ARGS[4]
 
-adapt_gpt_out_list = JSON.Parser.parsefile(
+adapt_gpt_out_list = JSON.parsefile(
     input_fpath
 );
 
