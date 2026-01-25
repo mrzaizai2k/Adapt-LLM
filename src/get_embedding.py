@@ -6,14 +6,14 @@ import sys
 import networkx as nx
 import json
 from typing import Literal
-from src.feather import FEATHERG
+from src.embedding.feather import FEATHERG
 
 
 def get_embedding(
     graphs_nx_df,
     n_nodes: int,
     rounding_digits: int = 2,
-    method: Literal["feather", "gnn", "graph2vec"] = "feather",
+    method: Literal["feather", "gnn", "graph2vec", "netlsd"] = "feather",
 ):
     # -----------------------
     # Deduplicate graphs

@@ -7,12 +7,10 @@ from tqdm import tqdm
 import json
 import networkx as nx
 import numpy as np
-from collections import Counter
 import random
 import argparse
 from joblib import Parallel, delayed
-from src.embedding import get_embedding
-from itertools import islice
+from src.get_embedding import get_embedding
 
 tqdm.pandas()
 

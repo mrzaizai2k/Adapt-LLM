@@ -1,10 +1,8 @@
 import sys
 sys.path.append("")
 
-import pickle
 from contextlib import nullcontext
 import torch
-import tiktoken
 from nanoGPT.model_pad_gemb import GPTConfig as GPTConfig_gemb
 from nanoGPT.model_pad_gemb import GPT as GPT_gemb
 
@@ -12,12 +10,6 @@ from nanoGPT.model_pad import GPTConfig as GPTConfig_nogemb
 from nanoGPT.model_pad import GPT as GPT_nogemb
 
 import pandas as pd
-import json
-from tqdm import tqdm
-import random
-import numpy as np
-from matplotlib import pyplot as plt
-from collections import defaultdict
 from pathlib import Path
 
 from util import (

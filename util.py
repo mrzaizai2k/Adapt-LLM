@@ -10,7 +10,7 @@ from collections import defaultdict
 import networkx as nx
 import json
 from gurobipy import Model, GRB
-from src.embedding import get_embedding
+from src.get_embedding import get_embedding
 
 
 def timeit(func):
