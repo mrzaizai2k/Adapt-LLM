@@ -1,20 +1,28 @@
 from pathlib import Path
 import subprocess
 import sys
+import time
 from datetime import datetime
 import pandas as pd
-import numpy as np
 import torch
 from tqdm import tqdm
 from collections import defaultdict
 import networkx as nx
 import json
 from gurobipy import Model, GRB
-import gurobipy as gb
+from src.embedding import get_embedding
 
-from FEATHER.src.feather import FEATHERG
-from itertools import islice
-from joblib import Parallel, delayed
+
+def timeit(func):
+    def wrapper(*args, **kwargs):
+        start_time = time.time()
+        result = func(*args, **kwargs)
+        end_time = time.time()
+        execution_time = end_time - start_time
+        print(f"{func.__name__} took {execution_time:.2f} seconds to execute.")
+        return result
+
+    return wrapper
 
 def check_if_nx_graph_is_weighted(graph_nx):
     return all('weight' in graph_nx[u][v] for u, v in graph_nx.edges)
@@ -370,71 +378,6 @@ def gurobi_max_cut_val_from_nx(graph_nx):
     return -model.ObjVal
 
 
-def get_feather_emb(
-    graphs_nx_df,
-    n_workers,
-    n_nodes,
-    rounding_digits=2,
-):
-    combined_unique_graphs_df = (
-        graphs_nx_df[['graph_id', 'edgelist_json']]
-            .drop_duplicates()
-    )
-    
-    
-    def create_weighted_graph_nx(w_elist):
-        G = nx.Graph()
-        G.add_weighted_edges_from(w_elist)
-        return G
-    
-    combined_unique_graphs_df['edgelist_py_list'] = combined_unique_graphs_df['edgelist_json'].apply(
-        lambda x: [
-            (e[0]-1, e[1]-1, e[2]) for e in json.loads(x)
-            #(e[0]-1, e[1]-1) for e in x
-        ]
-    )
-    
-    combined_unique_graphs_df['graph_nx'] = (
-        combined_unique_graphs_df['edgelist_py_list']
-            .apply(lambda x: create_weighted_graph_nx(x))
-    )
-    
-    combined_unique_graphs_w_idx_df = combined_unique_graphs_df.set_index('graph_id')
-    graphs_nx_dict = combined_unique_graphs_w_idx_df['graph_nx'].to_dict()
-    graphs_nx_filt_dict = dict(
-        [(name, g) for name, g in graphs_nx_dict.items() if g.number_of_nodes() == n_nodes]
-    )
-    graphs_nx_filt_names = list(graphs_nx_filt_dict.keys())
-    graphs_nx_filt_list = list(graphs_nx_filt_dict.values())
-    
-    emb_graph_idx_to_id_dict = {k:v for k,v in enumerate(graphs_nx_filt_names)}
-    emb_graph_id_to_idx_dict = {v:k for k,v in enumerate(graphs_nx_filt_names)}
-    
-    def get_single_thread_feather_emb(g_list):
-        feather_model = FEATHERG()
-        feather_model.fit(graphs=g_list)
-        return feather_model.get_embedding()
-    
-    def split_list(lst, n):
-        it = iter(lst)
-        return [list(islice(it, i)) for i in [len(lst) // n + (1 if x < len(lst) % n else 0) for x in range(n)]]
-    
-    def embed_nx_w_feather_parallel(graphs_list, n_workers=n_workers):
-        graphs_chunked_list = split_list(graphs_list, n_workers)
-        
-        #graphs_chunked_list=[graphs_list]
-        
-        emb_np_list = Parallel(n_jobs=n_workers)(
-            delayed(get_single_thread_feather_emb)(g_chunk) for g_chunk in graphs_chunked_list
-        )
-        
-        return np.vstack(emb_np_list)
-    
-    feather_par_emb = embed_nx_w_feather_parallel(graphs_nx_filt_list[:], n_workers=n_workers)
-    feather_par_emb = feather_par_emb.round(rounding_digits)
-
-    return feather_par_emb, emb_graph_idx_to_id_dict
-
 def seq_tokenize_graph(elist):
     tok_list = ['bos']
     for n1, n2, w in elist:
@@ -476,10 +419,10 @@ def prepare_model_input(
     graphs_nx_df['edgelist_json'] = graphs_nx_df['elist'].apply(lambda x: json.dumps(x))
 
     print("Performing FEATHER embedding")
-    feather_par_emb, emb_graph_idx_to_id_dict = get_feather_emb(
+    feather_par_emb, emb_graph_idx_to_id_dict = get_embedding(
         graphs_nx_df,
-        n_workers=n_workers_feather,
         n_nodes=n_nodes,
+        method="feather",
     )
     
     emb_graph_id_to_idx_dict = {v:k for k,v in emb_graph_idx_to_id_dict.items()}

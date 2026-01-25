@@ -11,7 +11,7 @@ from collections import Counter
 import random
 import argparse
 from joblib import Parallel, delayed
-from FEATHER.src.feather import FEATHERG
+from src.embedding import get_embedding
 from itertools import islice
 
 tqdm.pandas()
@@ -35,10 +35,10 @@ parser.add_argument('--approx_ratio_thr', type=float, default=0.97, help='Approx
 parser.add_argument('--max_abs_param_val', type=float, default=10, help='Maximum absolute value of gamma and beta params')
 parser.add_argument('--perform_coef_mod_range', type=int, default=True, help='Wrap beta to [0; pi] range; 1 is true (default), 0 is false')
 parser.add_argument('--apply_sliding_window', type=bool, default=True, action=argparse.BooleanOptionalAction, help='Apply sliding window to generate training samples')
-parser.add_argument('--apply_feather_graph', type=bool, default=True, action=argparse.BooleanOptionalAction, help='Apply feather graph to generate graph embeddings')
 parser.add_argument('--n_workers', type=int, default=1, help='Number of workers to use to process ADAPT results')
 parser.add_argument('--skip_only_qaoa_circ', type=bool, default=False, action=argparse.BooleanOptionalAction, help='Exclude circuits with only QAOA mixer present')
 parser.add_argument('--allowed_graph_generators', type=str, default="all", help='Allowed graph generators. Default: all. Should be separated with ;. Allowed values: erdos_renyi;barabasi_albert;watts_strogatz;random_regular;bipartite')
+parser.add_argument('--embedding_method',type=str,choices=['feather', 'gnn', 'graph2vec'], default='feather', help='Graph embedding method to use: feather | gnn | graph2vec (default: feather)')
 
 # Parse the arguments
 args = parser.parse_args()
@@ -59,7 +59,7 @@ debug_limit = args.debug_limit
 min_block_size = args.min_block_size
 max_block_size = args.max_block_size
 apply_sliding_window = args.apply_sliding_window
-apply_feather_graph = args.apply_feather_graph
+embedding_method = args.embedding_method
 n_workers = args.n_workers
 n_nodes = args.n_nodes
 skip_only_qaoa_circ = args.skip_only_qaoa_circ
@@ -251,68 +251,25 @@ print(combined_res_df['g_method'].value_counts())
 
 #-----------------------#
 # Graph embedding
-print("Applying FEATHER graph embedding...")
+print("Applying graph embedding...")
 
-combined_unique_graphs_df = (
-    combined_res_df[['graph_id', 'edgelist_json']]
-        .drop_duplicates()
+feather_par_emb, emb_graph_idx_to_id_dict = get_embedding(
+    graphs_nx_df=combined_res_df,
+    n_nodes=n_nodes,
+    rounding_digits=rounding_digits,
+    method=embedding_method,
 )
 
+emb_graph_id_to_idx_dict = {
+    graph_id: idx
+    for idx, graph_id in emb_graph_idx_to_id_dict.items()
+}
 
-def create_weighted_graph_nx(w_elist):
-    G = nx.Graph()
-    G.add_weighted_edges_from(w_elist)
-    return G
 
-combined_unique_graphs_df['edgelist_py_list'] = combined_unique_graphs_df['edgelist_json'].progress_apply(
-    lambda x: [
-        (e[0]-1, e[1]-1, e[2]) for e in json.loads(x)
-        #(e[0]-1, e[1]-1) for e in x
-    ]
+combined_res_df["has_emb"] = combined_res_df["graph_id"].isin(
+    emb_graph_id_to_idx_dict
 )
 
-combined_unique_graphs_df['graph_nx'] = (
-    combined_unique_graphs_df['edgelist_py_list']
-        .progress_apply(lambda x: create_weighted_graph_nx(x))
-)
-
-combined_unique_graphs_w_idx_df = combined_unique_graphs_df.set_index('graph_id')
-graphs_nx_dict = combined_unique_graphs_w_idx_df['graph_nx'].to_dict()
-graphs_nx_filt_dict = dict(
-    [(name, g) for name, g in tqdm(graphs_nx_dict.items()) if g.number_of_nodes() == n_nodes]
-)
-graphs_nx_filt_names = list(graphs_nx_filt_dict.keys())
-graphs_nx_filt_list = list(graphs_nx_filt_dict.values())
-
-emb_graph_idx_to_id_dict = {k:v for k,v in enumerate(graphs_nx_filt_names)}
-emb_graph_id_to_idx_dict = {v:k for k,v in enumerate(graphs_nx_filt_names)}
-
-def get_feather_emb(g_list):
-    feather_model = FEATHERG()
-    feather_model.fit(graphs=g_list)
-    return feather_model.get_embedding()
-
-def split_list(lst, n):
-    it = iter(lst)
-    return [list(islice(it, i)) for i in [len(lst) // n + (1 if x < len(lst) % n else 0) for x in range(n)]]
-
-def embed_nx_w_feather_parallel(graphs_list, n_workers=2):
-    graphs_chunked_list = split_list(graphs_list, n_workers)
-    
-    #graphs_chunked_list=[graphs_list]
-    
-    emb_np_list = Parallel(n_jobs=n_workers)(
-        delayed(get_feather_emb)(g_chunk) for g_chunk in graphs_chunked_list
-    )
-    
-    return np.vstack(emb_np_list)
-
-feather_par_emb = embed_nx_w_feather_parallel(graphs_nx_filt_list[:], n_workers=n_workers)
-feather_par_emb = feather_par_emb.round(rounding_digits)
-
-combined_res_df['has_emb'] = combined_res_df['graph_id'].apply(
-    lambda x: True if x in emb_graph_id_to_idx_dict else False
-)
 
 #-----------------------#
 
@@ -680,6 +637,7 @@ config_to_save_str = config_template_str.format(
     use_graph_emb="True",
     pool_type=pool_type,
     n_nodes=n_nodes,
+    embedding_method=f"'{embedding_method}'",
 )
 
 with open(save_path.joinpath('train_adapt_gpt_config.py'), 'w') as f:

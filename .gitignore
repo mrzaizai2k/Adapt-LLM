@@ -22,3 +22,7 @@ __pycache__/
 .ipynb_checkpoints/
 
 temp_data/
+ADAPT.jl_results/
+nanoGPT/data/test/
+*.npy
+*.pkl
