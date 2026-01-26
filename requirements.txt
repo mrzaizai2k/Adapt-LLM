@@ -12,3 +12,5 @@ matplotlib
 joblib 
 scipy 
 gurobipy 
+jupyter
+jupytext
