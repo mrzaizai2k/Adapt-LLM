@@ -7,13 +7,14 @@ import networkx as nx
 import json
 from typing import Literal
 from src.embedding.feather import FEATHERG
+from src.embedding.netlsd import NetLSD
 
 
 def get_embedding(
     graphs_nx_df,
     n_nodes: int,
     rounding_digits: int = 2,
-    method: Literal["feather", "gnn", "graph2vec", "netlsd"] = "feather",
+    method: Literal["feather", "gnn", "netlsd"] = "feather",
 ):
     # -----------------------
     # Deduplicate graphs
@@ -79,8 +80,19 @@ def get_embedding(
     elif method == "gnn":
         raise NotImplementedError("GNN embedding not implemented yet")
 
-    elif method == "graph2vec":
-        raise NotImplementedError("Graph2Vec embedding not implemented yet")
+    elif method == "netlsd":
+        for g in graphs_nx_filt_list:
+            for i in range(g.number_of_nodes()):
+                if not g.has_edge(i, i):
+                    g.add_edge(i, i, weight=1.0)
+                    
+        model = NetLSD(
+            scale_steps=500,        # embedding dimension
+            approximations=50,      # safe for small graphs
+            seed=42,
+        )
+        model.fit(graphs_nx_filt_list)
+        emb = model.get_embedding()
 
     else:
         raise ValueError(f"Unknown embedding method: {method}")
@@ -88,6 +100,7 @@ def get_embedding(
     emb = emb.round(rounding_digits)
 
     return emb, emb_graph_idx_to_id_dict
+
 
 
 if __name__ == "__main__":
@@ -129,6 +142,20 @@ if __name__ == "__main__":
     print("Embedding shape:", emb.shape)
     print("Embedding (first rows):")
     print(emb[:2])
+
+    print("\nIndex → Graph ID mapping:")
+    print(idx_to_id)
+
+    emb, idx_to_id = get_embedding(
+        graphs_nx_df=graphs_nx_df,
+        n_nodes=n_nodes,
+        rounding_digits=rounding_digits,
+        method="netlsd",
+    )
+
+    print("Embedding shape:", emb.shape)
+    print("Embedding (first 2 graphs, first 10 dims):")
+    print(emb)
 
     print("\nIndex → Graph ID mapping:")
     print(idx_to_id)

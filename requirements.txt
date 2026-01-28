@@ -14,3 +14,4 @@ scipy
 gurobipy 
 jupyter
 jupytext
+torch_geometric
