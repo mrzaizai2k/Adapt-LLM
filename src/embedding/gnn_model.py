@@ -1,8 +1,15 @@
+import sys
+sys.path.append("")
+
+import numpy as np
+import networkx as nx
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
+from torch_geometric.utils import from_networkx
 from torch_geometric.nn import GINConv, AttentionalAggregation
+from src.utils import read_config
 
 class GNNGraphEncoder(nn.Module):
     def __init__(
@@ -44,3 +51,92 @@ class GNNGraphEncoder(nn.Module):
 
         graph_emb = self.pool(x, batch)
         return self.project(graph_emb)
+
+
+def nx_to_pyg(graph):
+    data = from_networkx(graph)
+    data.x = torch.tensor(
+        np.vstack([graph.nodes[n]["x"] for n in graph.nodes()]),
+        dtype=torch.float,
+    )
+    return data
+
+class GNN:
+    def __init__(self, config_path="config/config.yaml"):
+        self.config = read_config(config_path)["gnn"]
+
+        self.node_feature_dim = self.config["NODE_FEATURE_DIM"]
+
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        self.model = GNNGraphEncoder(
+            in_dim=self.node_feature_dim,
+            hidden_dim=self.config["HIDDEN_DIM"],
+            embedding_dim=self.config["EMBEDDING_DIM"],
+            num_layers=self.config["NUM_LAYERS"],
+        ).to(self.device)
+
+        self.model_path = self.config["MODEL_PATH"]
+        self.load_model()
+
+        print(f"GNN model initialized on device: {self.device}")
+
+    def load_model(self):
+        state = torch.load(self.model_path, map_location=self.device)
+        self.model.load_state_dict(state)
+        self.model.eval()
+
+    # --------------------------------------------------
+    # 🔑 KEY ADDITION: ensure node["x"] exists
+    # --------------------------------------------------
+    def _ensure_node_features(self, G: nx.Graph):
+        for n in G.nodes():
+            if "x" not in G.nodes[n]:
+                G.nodes[n]["x"] = np.random.randn(self.node_feature_dim)
+
+    def get_embedding(self, graphs):
+        embeddings = []
+
+        with torch.no_grad():
+            for G in graphs:
+                # 🔑 make inference match training distribution
+                self._ensure_node_features(G)
+
+                data = nx_to_pyg(G).to(self.device)
+
+                batch = torch.zeros(
+                    data.num_nodes, dtype=torch.long, device=self.device
+                )
+
+                emb = self.model(data.x, data.edge_index, batch)
+                embeddings.append(emb.squeeze(0).cpu().numpy())
+
+        embeddings = np.stack(embeddings)
+        print("GNN shape:", embeddings.shape)
+        return embeddings
+
+
+if __name__ == "__main__":
+
+    np.random.seed(42)
+
+    graphs = []
+    num_graphs = 3
+    num_nodes = 8
+    edge_prob = 0.4
+
+    for _ in range(num_graphs):
+        G = nx.erdos_renyi_graph(num_nodes, edge_prob)
+        for u, v in G.edges():
+            G[u][v]["weight"] = np.random.uniform(0.5, 2.0)
+        graphs.append(G)
+
+    model = GNN()
+    embeddings = model.get_embedding(graphs)
+
+    embeddings = np.round(embeddings, 2)
+
+    print("Embedding shape:", embeddings.shape)
+    for i, emb in enumerate(embeddings):
+        print(f"\nGraph {i} embedding (first 10 dims):")
+        print(emb[:10])

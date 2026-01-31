@@ -1,7 +1,6 @@
 from pathlib import Path
 import subprocess
 import sys
-import time
 from datetime import datetime
 import pandas as pd
 import torch
@@ -11,18 +10,6 @@ import networkx as nx
 import json
 from gurobipy import Model, GRB
 from src.get_embedding import get_embedding
-
-
-def timeit(func):
-    def wrapper(*args, **kwargs):
-        start_time = time.time()
-        result = func(*args, **kwargs)
-        end_time = time.time()
-        execution_time = end_time - start_time
-        print(f"{func.__name__} took {execution_time:.2f} seconds to execute.")
-        return result
-
-    return wrapper
 
 def check_if_nx_graph_is_weighted(graph_nx):
     return all('weight' in graph_nx[u][v] for u, v in graph_nx.edges)
@@ -438,3 +425,4 @@ def prepare_model_input(
     graphs_nx_df['graph_id'].apply(lambda x: x[:2]).value_counts()
     
     return graphs_nx_df, feather_par_emb, emb_graph_id_to_idx_dict
+

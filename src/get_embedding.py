@@ -1,13 +1,13 @@
 import sys
 sys.path.append("")
 
-
 import sys
 import networkx as nx
 import json
 from typing import Literal
 from src.embedding.feather import FEATHERG
 from src.embedding.netlsd import NetLSD
+from src.embedding.gnn_model import GNN
 
 
 def get_embedding(
@@ -78,7 +78,9 @@ def get_embedding(
         emb = model.get_embedding()
 
     elif method == "gnn":
-        raise NotImplementedError("GNN embedding not implemented yet")
+        model = GNN()
+        emb = model.get_embedding(graphs_nx_filt_list)
+
 
     elif method == "netlsd":
         for g in graphs_nx_filt_list:
@@ -160,4 +162,14 @@ if __name__ == "__main__":
     print("\nIndex → Graph ID mapping:")
     print(idx_to_id)
 
-    
+    emb, idx_to_id = get_embedding(
+        graphs_nx_df,
+        n_nodes,
+        rounding_digits,
+        method="gnn",
+    )
+
+    print("\nGNN")
+    print("Embedding shape:", emb.shape)
+    print(emb[:2, :10])
+    print(idx_to_id)
