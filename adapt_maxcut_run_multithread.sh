@@ -13,11 +13,11 @@ COMPILE="yes" # yes or no
 
 #######################################
 # ADAPT parameters (adjust as needed) #
-N_WORKERS=1 # number of concurrent ADAPT.jl instances 
+N_WORKERS=4 # number of concurrent ADAPT.jl instances 
 OUTPUT_DIR="ADAPT.jl_results/$CUR_DATE"
-GRAPHS_NUMBER=10
-N_NODES=8
-TRIALS_PER_GRAPH=1
+GRAPHS_NUMBER=50000
+N_NODES=10
+TRIALS_PER_GRAPH=3
 ENERGY_TOL_FRAC="0.03"
 MAX_PARAMS=50
 WEIGHTED=true
