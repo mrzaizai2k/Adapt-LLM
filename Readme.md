@@ -9,7 +9,7 @@ This repo contains code for the work: [QAOA-GPT: Efficient Generation of Adaptiv
 	1. Install Julia: https://julialang.org/downloads/ 
 	2. For your convenience, you can also add Julia kernel to your Jupyter: https://julialang.github.io/IJulia.jl/stable/manual/installation/ (Julia notebooks are not used in this repo, but can be handy for debugging)
 - Python part:
-	1. Create conda environment:  `conda create -n adapt_gpt python=3.10`
+	1. Create conda environment:  `conda create -n adapt_gpt python=3.10 -y`
 	2. Activate it: `conda activate adapt_gpt`
 	3. Install python dependencies: `pip install -r requirements.txt`
 3. ADAPT GPT codebase:

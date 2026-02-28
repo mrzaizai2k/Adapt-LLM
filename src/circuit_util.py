@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -264,50 +265,55 @@ def eval_adapt_gpt_circ_jl(
     n_threads=4,
     pool_type="qaoa_double_pool",
 ):
+
     formatted_timestamp = datetime.now().strftime('%Y-%m-%d__%H_%M_%S')
 
-    adapt_gpt_path = Path(adapt_gpt_path)
-    temp_folder = Path(temp_folder)
-
+    adapt_gpt_path = Path(adapt_gpt_path).resolve()
+    temp_folder = Path(temp_folder).resolve()
     temp_folder.mkdir(parents=True, exist_ok=True)
 
     prefix = f'adapt_gpt_res_{formatted_timestamp}_df'
-    in_fname = f'{prefix}.json'
-    out_fname = f'{prefix}_jl.json'
+    in_fname_path = temp_folder / f"{prefix}.json"
+    out_fname_path = temp_folder / f"{prefix}_jl.json"
 
-    in_fname_path = temp_folder.joinpath(in_fname).resolve()
-    out_fname_path = temp_folder.joinpath(out_fname).resolve()
-    
-    adapt_gpt_res_df.to_json(
-        in_fname_path,
-        orient='records'
-    )
+    adapt_gpt_res_df.to_json(in_fname_path, orient="records")
 
-    adapt_jl_path = adapt_gpt_path.joinpath('ADAPT.jl').resolve()
-    script_path = adapt_gpt_path.joinpath('adapt_gpt_eval_energy.jl').resolve()
+    adapt_jl_path = (adapt_gpt_path / "ADAPT.jl").resolve()
+    script_path = (adapt_gpt_path / "adapt_gpt_eval_energy.jl").resolve()
+
+    JULIA_BIN = "/opt/julia-1.12.1/bin/julia"
+
+    cmd = [
+        JULIA_BIN,
+        "-t", str(n_threads),
+        f"--project={adapt_jl_path}",
+        str(script_path),
+        str(in_fname_path),
+        str(out_fname_path),
+        str(n_nodes),
+        pool_type,
+    ]
+
+    print("\n===== DEBUG INFO =====")
+    print("CWD:", os.getcwd())
+    print("Command:")
+    print(" ".join(cmd))
+    print("======================\n")
+
     process = subprocess.Popen(
-        [
-            "julia",
-            f"-t {n_threads}",
-            f"--project={adapt_jl_path}",
-            script_path,
-            in_fname_path,
-            out_fname_path,
-            str(n_nodes),
-            pool_type,
-        ],
-        stdout=sys.stdout, 
+        cmd,
+        stdout=sys.stdout,
         stderr=sys.stderr,
-        text=True
+        text=True,
     )
-    
-    # Wait for Julia to finish
-    process.wait()
 
-    adapt_gpt_res_w_energies_df = pd.read_json(out_fname_path)
-    
-    return adapt_gpt_res_w_energies_df
+    ret = process.wait()
+    print("\nJulia return code:", ret)
 
+    if not out_fname_path.exists():
+        raise RuntimeError("Julia finished but output file was not created")
+
+    return pd.read_json(out_fname_path)
 
 def elist_to_nx(input_elist, jl_idx_shift=True):
     elist = []

@@ -12,7 +12,7 @@ from nanoGPT.model_pad import GPT as GPT_nogemb
 import pandas as pd
 from pathlib import Path
 
-from circuit_util import (
+from src.circuit_util import (
     generate_circ_from_df,
     eval_adapt_gpt_circ_jl,
     prepare_model_input
