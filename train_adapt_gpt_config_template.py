@@ -2,8 +2,8 @@
 # Based on https://github.com/karpathy/nanoGPT/blob/master/config/train_shakespeare_char.py
 
 out_dir = '{out_dir}'
-eval_interval = 250 # keep frequent because we'll overfit
-eval_iters = 200
+eval_interval = 250 # keep frequent because we'll overfit, we will eval after eval_interval iterations
+eval_iters = 200 # sample size for eval, the larger the better, but takes longer
 log_interval = 10 # don't print too too often
 eval_ar_every = 5000 # how often we do approx ratio evaluation (calling ADAPT.jl)
 

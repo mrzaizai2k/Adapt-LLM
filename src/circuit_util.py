@@ -256,6 +256,56 @@ def generate_circ_from_df(
 
     return adapt_gpt_test_samples_df
 
+def fix_new_layer_p(df):
+    """
+    Convert operator indices like 11.0 -> 11 when they appear
+    immediately after 'new_layer_p' in any list or nested list column.
+    """
+
+    def fix_sequence(seq):
+        if not isinstance(seq, list):
+            return seq
+
+        fixed = []
+        i = 0
+        while i < len(seq):
+            if (
+                seq[i] == "new_layer_p"
+                and i + 1 < len(seq)
+                and isinstance(seq[i + 1], (int, float))
+            ):
+                fixed.append(seq[i])
+
+                op_val = seq[i + 1]
+
+                # If float but actually integer-valued (11.0, 45.0, etc.)
+                if isinstance(op_val, float) and op_val.is_integer():
+                    fixed.append(int(op_val))
+                else:
+                    fixed.append(op_val)
+
+                i += 2
+            else:
+                fixed.append(seq[i])
+                i += 1
+
+        return fixed
+
+    def fix_value(val):
+        if isinstance(val, list):
+            # Nested list case (e.g. q_circuits)
+            if len(val) > 0 and isinstance(val[0], list):
+                return [fix_sequence(v) for v in val]
+            return fix_sequence(val)
+        return val
+
+    df = df.copy()
+
+    for col in df.columns:
+        if df[col].dtype == "object":
+            df[col] = df[col].apply(fix_value)
+
+    return df
 
 def eval_adapt_gpt_circ_jl(
     adapt_gpt_res_df,
@@ -276,6 +326,7 @@ def eval_adapt_gpt_circ_jl(
     in_fname_path = temp_folder / f"{prefix}.json"
     out_fname_path = temp_folder / f"{prefix}_jl.json"
 
+    adapt_gpt_res_df = fix_new_layer_p(adapt_gpt_res_df) # should be removed
     adapt_gpt_res_df.to_json(in_fname_path, orient="records")
 
     adapt_jl_path = (adapt_gpt_path / "ADAPT.jl").resolve()
