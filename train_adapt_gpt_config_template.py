@@ -5,7 +5,7 @@ out_dir = '{out_dir}'
 eval_interval = 250 # keep frequent because we'll overfit, we will eval after eval_interval iterations
 eval_iters = 200 # sample size for eval, the larger the better, but takes longer
 log_interval = 10 # don't print too too often
-eval_ar_every = 5000 # how often we do approx ratio evaluation (calling ADAPT.jl)
+eval_ar_every = 500 # how often we do approx ratio evaluation (calling ADAPT.jl)
 
 # we expect to overfit on this small dataset, so only save when val improves
 always_save_checkpoint = False

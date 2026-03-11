@@ -49,6 +49,7 @@ class QAOA_GPT():
 
         self.pool_type = config_vars['pool_type']
         self.use_graph_emb = config_vars['use_graph_emb']
+        self.embedding_method = config_vars.get('embedding_method', 'feather')
 
         if 'n_nodes' not in config_vars:
             if n_nodes == 'infer':
@@ -130,11 +131,13 @@ class QAOA_GPT():
         max_new_tokens=150, # number of tokens generated in each sample
         temperature=0.1, # 1.0 = no change, < 1.0 = less random, > 1.0 = more random, in predictions
         top_k=200, # retain only the top_k most likely tokens, clamp others to have 0 probability
+        embedding_method='feather',
     ):
         graphs_nx_df, feather_par_emb, emb_graph_id_to_idx_dict = prepare_model_input(
             graphs_container,
             n_nodes=self.n_nodes,
             calculate_classic_maxcut=calculate_classic_maxcut,
+            embedding_method=embedding_method,
         )
 
         self.graphs_nx_df = graphs_nx_df

@@ -433,7 +433,7 @@ def prepare_model_input(
     graphs_container,
     n_nodes,
     calculate_classic_maxcut=True,
-    n_workers_feather=1,
+    embedding_method='feather',
 ):
     
     if type(graphs_container) == list:
@@ -462,11 +462,11 @@ def prepare_model_input(
     graphs_nx_df['label'] = 'test_interactive'
     graphs_nx_df['edgelist_json'] = graphs_nx_df['elist'].apply(lambda x: json.dumps(x))
 
-    print("Performing FEATHER embedding")
+    print(f"Performing {embedding_method} embedding")
     feather_par_emb, emb_graph_idx_to_id_dict = get_embedding(
         graphs_nx_df,
         n_nodes=n_nodes,
-        method="feather",
+        method=embedding_method,
     )
     
     emb_graph_id_to_idx_dict = {v:k for k,v in emb_graph_idx_to_id_dict.items()}
