@@ -29,7 +29,7 @@ The pipeline is run as follows:
 	- Note: nanoGPT expects `<SAVING_DIR>` to be a folder inside `nanoGPT/data`
 3. Train GPT model:
 	1. Go to nanoGPT directory: `cd nanoGPT/`
-	2. Run: `python train_pad_gemb_ar_eval.py <SAVING_DIR>/train_adapt_gpt_config.py`
+	2. Run: `python train_pad_gemb_ar_eval.py --train_config_path <SAVING_DIR>/train_adapt_gpt_config.py --model gpt`
 4. Use a pre-trained model for inference:
 	1. Generate circuits for random graphs and evaluate them with ADAPT.jl. Notebook: `qaoa_gpt_inference_demo.ipynb`
 
