@@ -36,7 +36,7 @@ parser.add_argument('--apply_sliding_window', type=bool, default=True, action=ar
 parser.add_argument('--n_workers', type=int, default=1, help='Number of workers to use to process ADAPT results')
 parser.add_argument('--skip_only_qaoa_circ', type=bool, default=False, action=argparse.BooleanOptionalAction, help='Exclude circuits with only QAOA mixer present')
 parser.add_argument('--allowed_graph_generators', type=str, default="all", help='Allowed graph generators. Default: all. Should be separated with ;. Allowed values: erdos_renyi;barabasi_albert;watts_strogatz;random_regular;bipartite')
-parser.add_argument('--embedding_method',type=str,choices=['feather', 'gnn', 'graph2vec'], default='feather', help='Graph embedding method to use: feather | gnn | graph2vec (default: feather)')
+parser.add_argument('--embedding_method',type=str,choices=['feather', 'gnn', 'netlsd'], default='feather', help='Graph embedding method to use: feather | gnn | netlsd (default: feather)')
 
 # Parse the arguments
 args = parser.parse_args()
@@ -602,7 +602,7 @@ val_data_sampled.to_pickle(
 
 emb_size = feather_par_emb.shape[1]
 np.save(
-    save_path.joinpath(f'feather_emb_d{emb_size}.npy'),
+    save_path.joinpath(f'{embedding_method}_emb_d{emb_size}.npy'),
     feather_par_emb
 )
 

@@ -7,6 +7,7 @@ import networkx as nx
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from tqdm import tqdm
 from torch_geometric.utils import from_networkx
 from torch_geometric.nn import GINConv, AttentionalAggregation
 from src.utils import read_config
@@ -98,7 +99,7 @@ class GNN:
         embeddings = []
 
         with torch.no_grad():
-            for G in graphs:
+            for G in tqdm(graphs, desc="GNN"):
                 # 🔑 make inference match training distribution
                 self._ensure_node_features(G)
 

@@ -3,6 +3,7 @@ sys.path.append("")
 
 import numpy as np
 import networkx as nx
+from tqdm import tqdm
 from typing import List
 import scipy.sparse as sps
 from src.embedding.embedding_utils import Estimator
@@ -141,15 +142,12 @@ class NetLSD(Estimator):
         return heat_kernel_trace
 
     def fit(self, graphs: List[nx.classes.graph.Graph]):
-        """
-        Fitting a NetLSD model.
-
-        Arg types:
-            * **graphs** *(List of NetworkX graphs)* - The graphs to be embedded.
-        """
         self._set_seed()
         graphs = self._check_graphs(graphs)
-        self._embedding = [self._calculate_netlsd(graph) for graph in graphs]
+        self._embedding = [
+            self._calculate_netlsd(graph)
+            for graph in tqdm(graphs, desc="NetLSD")
+        ]
 
 
     def get_embedding(self) -> np.array:
@@ -172,7 +170,10 @@ class NetLSD(Estimator):
         """
         self._set_seed()
         graphs = self._check_graphs(graphs)
-        embedding = np.array([self._calculate_netlsd(graph) for graph in graphs])
+        embedding = np.array([
+                self._calculate_netlsd(graph)
+                for graph in tqdm(graphs, desc="NetLSD infer")
+            ])
         return embedding
     
 if __name__ == "__main__":
