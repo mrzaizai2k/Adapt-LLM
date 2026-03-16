@@ -35,6 +35,7 @@ embedding_method = {embedding_method}
 pool_type = '{pool_type}'
 n_nodes = {n_nodes}
 
+seed = 1337
 # on macbook also add
 # device = 'cpu'  # run on cpu only
 # compile = False # do not torch compile the model
