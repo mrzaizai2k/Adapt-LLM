@@ -2,7 +2,7 @@ gnn:
   SEED: 42
 
   NUM_GRAPHS: 500
-  NODE_CHOICES: [8, 10, 12]
+  NODE_CHOICES: [9, 10, 11]
 
   EDGE_P_MIN: 0.2
   EDGE_P_MAX: 0.8

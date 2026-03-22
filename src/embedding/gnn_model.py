@@ -55,11 +55,24 @@ class GNNGraphEncoder(nn.Module):
 
 
 def nx_to_pyg(graph):
-    data = from_networkx(graph)
+    G = graph.copy()
+
+    # ensure all edges have weight
+    for u, v in G.edges():
+        if "weight" not in G[u][v]:
+            G[u][v]["weight"] = 1.0
+
+    data = from_networkx(G)
+
     data.x = torch.tensor(
-        np.vstack([graph.nodes[n]["x"] for n in graph.nodes()]),
+        np.vstack([G.nodes[n]["x"] for n in G.nodes()]),
         dtype=torch.float,
     )
+
+    # optional: store edge weight tensor
+    if "weight" in data:
+        data.edge_weight = data.weight.float()
+
     return data
 
 class GNN:

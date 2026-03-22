@@ -26,3 +26,4 @@ ADAPT.jl_results/
 nanoGPT/data/test/
 *.npy
 *.pkl
+*.pt
