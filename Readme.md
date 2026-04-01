@@ -50,3 +50,5 @@ If you found our work useful, please cite [our paper](https://arxiv.org/abs/2504
 }
 
 ```
+
+Note: The code `adapt_maxcut_run_multithread.sh` don't filter circuit with AR < thr. Only filter in this code  `prepare_circ.py`

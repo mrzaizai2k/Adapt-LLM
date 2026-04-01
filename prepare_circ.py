@@ -292,6 +292,10 @@ combined_res_filt_df = combined_res_df[
     )
 ]
 
+print("\nlen combined_res_df", len(combined_res_df))
+print("len combined_res_filt_df", len(combined_res_filt_df))
+
+
 if skip_only_qaoa_circ:
     print("Filtering out only QAOA circuits...")
     n_only_qaoa_circ = combined_res_filt_df['only_qaoa_circ'].sum()
