@@ -8,6 +8,7 @@ import pandas as pd
 import networkx as nx
 from joblib import Parallel, delayed
 from tqdm import tqdm
+from typing import Tuple
 
 def split_list(lst, n):
     it = iter(lst)
@@ -286,3 +287,35 @@ def get_combined_res_df(
     )
     
     return combined_res_df
+
+def compute_metrics(df: pd.DataFrame) -> Tuple[float, float, float]:
+    """
+    Compute evaluation metrics for the QAOA-GPT model.
+
+    The input DataFrame contains one row per graph instance with the following columns:
+        - graph_prefix (str): Identifier for the graph (e.g., "er_graph_0").
+        - graph (list): Flattened representation of a weighted graph as alternating edge pairs and weights,
+            e.g., [[u, v], weight, [u, v], weight, ...].
+        - n_edges (int): Number of edges in the graph.
+        - q_circuits (list[list]): List of quantum circuits. Each circuit is represented as a flat list
+            of tokens and parameters, where occurrences of the string "new_layer_p" indicate a new QAOA layer.
+        - adapt_gpt_energies (list[float]): List of energies produced by the QAOA-GPT model for each circuit.
+            A value of 999 indicates an invalid or failed circuit.
+        - energy_gurobi (float): Ground-truth optimal energy computed using Gurobi.
+
+    Returns:
+        Tuple[float, float, float]:
+            - avg_ar (float): Mean approximation ratio (adapt_gpt_energy / energy_gurobi) over valid energies.
+            - error_rate (float): Fraction of invalid energies (equal to 999).
+            - n_layers (float): Average number of QAOA layers across all circuits.
+    """
+    df_expl = df.explode(["adapt_gpt_energies","q_circuits"])
+    n_layers = df_expl["q_circuits"].apply(lambda x: x.count("new_layer_p")).mean()
+    df_energy = df[["adapt_gpt_energies","energy_gurobi"]].explode("adapt_gpt_energies")
+    df_corr = df_energy[df_energy["adapt_gpt_energies"] != 999]
+    df_corr["ar"] = df_corr["adapt_gpt_energies"] / df_corr["energy_gurobi"]
+    avg_ar = round(df_corr["ar"].mean(),5,)
+    df_err = df_energy[df_energy["adapt_gpt_energies"] == 999]
+    error_rate = round(len(df_err) / len(df_energy),5,)
+
+    return avg_ar, error_rate, n_layers

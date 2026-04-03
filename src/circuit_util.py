@@ -9,6 +9,7 @@ from tqdm import tqdm
 from collections import defaultdict
 import networkx as nx
 import json
+from typing import Tuple
 from gurobipy import Model, GRB
 from src.get_embedding import get_embedding
 
@@ -482,4 +483,5 @@ def prepare_model_input(
     graphs_nx_df['graph_id'].apply(lambda x: x[:2]).value_counts()
     
     return graphs_nx_df, feather_par_emb, emb_graph_id_to_idx_dict
+
 
