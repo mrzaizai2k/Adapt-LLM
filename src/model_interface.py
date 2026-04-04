@@ -38,7 +38,7 @@ class QAOA_GPT():
         self,
         model_ckpt,
         data_dir,
-        temp_folder="adapt_gpt_temp_data",
+        temp_folder="temp_data",
     ):
 
         self.data_dir = Path(data_dir)

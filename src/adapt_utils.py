@@ -309,13 +309,16 @@ def compute_metrics(df: pd.DataFrame) -> Tuple[float, float, float]:
             - error_rate (float): Fraction of invalid energies (equal to 999).
             - n_layers (float): Average number of QAOA layers across all circuits.
     """
-    df_expl = df.explode(["adapt_gpt_energies","q_circuits"])
+    
+    df_expl  = df.explode(["adapt_gpt_energies", "q_circuits"])
     n_layers = df_expl["q_circuits"].apply(lambda x: x.count("new_layer_p")).mean()
-    df_energy = df[["adapt_gpt_energies","energy_gurobi"]].explode("adapt_gpt_energies")
-    df_corr = df_energy[df_energy["adapt_gpt_energies"] != 999]
+
+    df_energy = df[["adapt_gpt_energies", "energy_gurobi"]].explode("adapt_gpt_energies")
+
+    df_corr      = df_energy[df_energy["adapt_gpt_energies"] != 999].copy()  # <-- .copy()
     df_corr["ar"] = df_corr["adapt_gpt_energies"] / df_corr["energy_gurobi"]
-    avg_ar = round(df_corr["ar"].mean(),5,)
-    df_err = df_energy[df_energy["adapt_gpt_energies"] == 999]
-    error_rate = round(len(df_err) / len(df_energy),5,)
+    avg_ar        = round(df_corr["ar"].mean(), 5)
+
+    error_rate = round((df_energy["adapt_gpt_energies"] == 999).mean(), 5)  # simpler
 
     return avg_ar, error_rate, n_layers
