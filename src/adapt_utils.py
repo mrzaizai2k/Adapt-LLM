@@ -8,6 +8,7 @@ import pandas as pd
 import networkx as nx
 from joblib import Parallel, delayed
 from tqdm import tqdm
+import numpy as np
 from typing import Tuple
 
 def split_list(lst, n):
@@ -288,37 +289,73 @@ def get_combined_res_df(
     
     return combined_res_df
 
-def compute_metrics(df: pd.DataFrame) -> Tuple[float, float, float]:
+def compute_metrics_per_graph(
+    df: pd.DataFrame,
+) -> Tuple[pd.Series, pd.Series, pd.Series]:
     """
-    Compute evaluation metrics for the QAOA-GPT model.
+    Compute evaluation metrics per graph instance.
 
-    The input DataFrame contains one row per graph instance with the following columns:
-        - graph_prefix (str): Identifier for the graph (e.g., "er_graph_0").
-        - graph (list): Flattened representation of a weighted graph as alternating edge pairs and weights,
-            e.g., [[u, v], weight, [u, v], weight, ...].
-        - n_edges (int): Number of edges in the graph.
-        - q_circuits (list[list]): List of quantum circuits. Each circuit is represented as a flat list
-            of tokens and parameters, where occurrences of the string "new_layer_p" indicate a new QAOA layer.
-        - adapt_gpt_energies (list[float]): List of energies produced by the QAOA-GPT model for each circuit.
-            A value of 999 indicates an invalid or failed circuit.
-        - energy_gurobi (float): Ground-truth optimal energy computed using Gurobi.
+    Each row in `df` corresponds to a graph and contains lists of:
+        - q_circuits
+        - adapt_gpt_energies
+        - energy_gurobi (scalar)
+
+    Returns:
+        Tuple of three pd.Series (aligned with df.index):
+            - ar: Mean approximation ratio per graph (NaN if no valid samples)
+            - layers: Mean number of QAOA layers per graph
+            - error_rate: Fraction of invalid samples (energy == 999) per graph
+    """
+    full_index = df.index
+
+    # --- Layers ---
+    df_expl = df.explode(["adapt_gpt_energies", "q_circuits"])
+    layers = (
+        df_expl.groupby(level=0)["q_circuits"]
+        .apply(lambda xs: xs.apply(lambda x: x.count("new_layer_p")).mean())
+        .reindex(full_index)
+    )
+
+    # --- Energy & error rate ---
+    df_energy = df[["adapt_gpt_energies", "energy_gurobi"]].explode("adapt_gpt_energies")
+
+    error_rate = (
+        df_energy.groupby(level=0)["adapt_gpt_energies"]
+        .apply(lambda x: (x == 999).sum() / len(x))
+        .reindex(full_index, fill_value=0.0)
+    )
+
+    # --- Approximation ratio (AR) ---
+    df_valid = df_energy[df_energy["adapt_gpt_energies"] != 999].copy()
+    df_valid["ar"] = df_valid["adapt_gpt_energies"] / df_valid["energy_gurobi"]
+
+    ar = (
+        df_valid.groupby(level=0)["ar"]
+        .mean()
+        .reindex(full_index, fill_value=np.nan)
+    )
+
+    return ar, layers, error_rate
+
+def compute_metrics(
+    df: pd.DataFrame,
+) -> Tuple[float, float, float]:
+    """
+    Compute dataset-level metrics by aggregating per-graph metrics.
+
+    This function ensures each graph contributes equally (not biased by
+    number of samples per graph).
 
     Returns:
         Tuple[float, float, float]:
-            - avg_ar (float): Mean approximation ratio (adapt_gpt_energy / energy_gurobi) over valid energies.
-            - error_rate (float): Fraction of invalid energies (equal to 999).
-            - n_layers (float): Average number of QAOA layers across all circuits.
+            - avg_ar: Mean approximation ratio across graphs (ignores NaNs)
+            - avg_error_rate: Mean error rate across graphs
+            - avg_layers: Mean number of layers across graphs
     """
-    
-    df_expl  = df.explode(["adapt_gpt_energies", "q_circuits"])
-    n_layers = df_expl["q_circuits"].apply(lambda x: x.count("new_layer_p")).mean()
+    ar, layers, error_rate = compute_metrics_per_graph(df)
 
-    df_energy = df[["adapt_gpt_energies", "energy_gurobi"]].explode("adapt_gpt_energies")
+    avg_ar = float(ar.mean(skipna=True))
+    avg_error_rate = float(error_rate.mean())
+    avg_layers = float(layers.mean())
 
-    df_corr      = df_energy[df_energy["adapt_gpt_energies"] != 999].copy()  # <-- .copy()
-    df_corr["ar"] = df_corr["adapt_gpt_energies"] / df_corr["energy_gurobi"]
-    avg_ar        = round(df_corr["ar"].mean(), 5)
-
-    error_rate = round((df_energy["adapt_gpt_energies"] == 999).mean(), 5)  # simpler
-
-    return avg_ar, error_rate, n_layers
+    return avg_ar, avg_error_rate, avg_layers
