@@ -327,3 +327,33 @@ def build_summary_df(final_df: pd.DataFrame) -> pd.DataFrame:
         )
         .reset_index()
     )
+
+def maxcut_bruteforce(G):
+    """
+    Returns:
+        best_energy (negative)
+        best_bitstring (int)
+    """
+    n = G.number_of_nodes()
+    edges = [(u, v, d.get("weight", 1.0)) for u, v, d in G.edges(data=True)]
+
+    best_cut = -1
+    best_state = 0
+
+    # iterate over all bitstrings
+    for state in range(1 << n):
+        cut = 0
+
+        for u, v, w in edges:
+            # XOR trick: check if bits differ
+            if ((state >> u) ^ (state >> v)) & 1:
+                cut += w
+
+        if cut > best_cut:
+            best_cut = cut
+            best_state = state
+
+    # IMPORTANT: convert to NEGATIVE energy (match your dataset)
+    best_energy = -best_cut
+
+    return best_energy, best_state

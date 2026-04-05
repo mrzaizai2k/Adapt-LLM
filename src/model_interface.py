@@ -197,7 +197,8 @@ class QAOA_GPT():
         if "energy_mqlib" in qaoa_gpt_circ_df.columns:
             output_columns_list.append("energy_mqlib")
 
-        if "energy_gurobi" in qaoa_gpt_circ_df.columns:
+        #This is  enrgy calculated by gurobi (classical brute-force), which is the optimal solution for maxcut
+        if "energy_gurobi" in qaoa_gpt_circ_df.columns: 
             output_columns_list.append("energy_gurobi")
 
         return qaoa_gpt_circ_eval_df[output_columns_list]
