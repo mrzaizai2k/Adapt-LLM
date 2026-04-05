@@ -6,7 +6,9 @@ import networkx as nx
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-
+import re
+from typing import Tuple, List, Dict
+ 
 
 def timeit(func):
     def wrapper(*args, **kwargs):
@@ -56,16 +58,7 @@ def generate_er_graphs(n_graphs, n_nodes):
     return graphs
 
 
-import re
-from typing import Tuple, List, Dict
- 
-import networkx as nx
-import numpy as np
-import pandas as pd
- 
-# ---------------------------------------------------------------------------
-# ARCH / METHOD ALIASES
-# ---------------------------------------------------------------------------
+
  
 ARCH_ALIASES: Dict[str, str] = {
     "llama": "LLaMA",
@@ -266,58 +259,6 @@ def load_and_aggregate_adapt(
     print(f"Graphs fed to model    : {len(graphs_unique)}")
  
     return adapt_df, adapt_agg, graphs_unique, meta_df
- 
-# ---------------------------------------------------------------------------
-# METRIC COMPUTATION
-# ---------------------------------------------------------------------------
- 
-# def compute_metrics_per_graph(
-#     df: pd.DataFrame,
-# ) -> Tuple[pd.Series, pd.Series, pd.Series]:
-#     """
-#     Compute evaluation metrics per graph instance.
- 
-#     Each row in `df` corresponds to a graph and contains lists of:
-#         - q_circuits
-#         - adapt_gpt_energies
-#         - energy_gurobi (scalar)
- 
-#     Returns:
-#         Tuple of three pd.Series (aligned with df.index):
-#             - ar         : Mean approximation ratio per graph (NaN if no valid samples)
-#             - layers     : Mean number of QAOA layers per graph
-#             - error_rate : Fraction of invalid samples (energy == 999) per graph
-#     """
-#     full_index = df.index
- 
-#     # --- Layers ---
-#     df_expl = df.explode(["adapt_gpt_energies", "q_circuits"])
-#     layers = (
-#         df_expl.groupby(level=0)["q_circuits"]
-#         .apply(lambda xs: xs.apply(lambda x: x.count("new_layer_p")).mean())
-#         .reindex(full_index)
-#     )
- 
-#     # --- Energy & error rate ---
-#     df_energy = df[["adapt_gpt_energies", "energy_gurobi"]].explode("adapt_gpt_energies")
- 
-#     error_rate = (
-#         df_energy.groupby(level=0)["adapt_gpt_energies"]
-#         .apply(lambda x: (x == 999).sum() / len(x))
-#         .reindex(full_index, fill_value=0.0)
-#     )
- 
-#     # --- AR (valid samples only) ---
-#     df_valid       = df_energy[df_energy["adapt_gpt_energies"] != 999].copy()
-#     df_valid["ar"] = df_valid["adapt_gpt_energies"] / df_valid["energy_gurobi"]
- 
-#     ar = (
-#         df_valid.groupby(level=0)["ar"]
-#         .mean()
-#         .reindex(full_index, fill_value=np.nan)
-#     )
- 
-#     return ar, layers, error_rate
  
  
 def build_results_df(
