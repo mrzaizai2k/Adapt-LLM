@@ -222,10 +222,11 @@ def run_vanilla_qaoa(
 # =========================
 if __name__ == "__main__":
     df = run_vanilla_qaoa(
-        data_path="ADAPT.jl_results/test/9_nodes",
+        data_path="ADAPT.jl_results/test/11_nodes",
         depth=None,
-        n_samples=2,
-        n_runs=2
+        n_samples=None,
+        n_runs=5
     )
 
     print(df.head())
+    
