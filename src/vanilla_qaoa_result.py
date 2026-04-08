@@ -1,3 +1,6 @@
+from datetime import datetime
+import numpy as np
+
 import os
 import glob
 import json
@@ -91,6 +94,12 @@ def run_qaoa_on_graph(
     gamma = qaoa.get_gamma(depth=depth)
     beta = qaoa.get_beta(depth=depth)
 
+    # Convert to clean Python lists (fix core bug)
+    if isinstance(gamma, np.ndarray):
+        gamma = gamma.tolist()
+    if isinstance(beta, np.ndarray):
+        beta = beta.tolist()
+
     energy_opt, _ = maxcut_bruteforce(G)
     approx_ratio = exp_val / energy_opt if energy_opt != 0 else None
 
@@ -121,9 +130,12 @@ def append_result_to_csv(
     result: Dict[str, Any],
     output_path: str
 ) -> None:
-    """
-    Append a single result row to CSV safely.
-    """
+
+    # Ensure list fields are saved correctly
+    result["γ_coeff"] = json.dumps(result["γ_coeff"])
+    result["β_coeff"] = json.dumps(result["β_coeff"])
+    result["edgelist_list"] = json.dumps(result["edgelist_list"])
+
     df = pd.DataFrame([result])
 
     write_header = not os.path.exists(output_path)
@@ -191,7 +203,9 @@ def run_vanilla_qaoa(
     output_dir = os.path.join(data_path, "qaoa_result")
     os.makedirs(output_dir, exist_ok=True)
 
-    output_path = os.path.join(output_dir, "qaoa.csv")
+    timestamp = datetime.now().strftime("%d_%H_%M")
+    output_filename = f"qaoa_{timestamp}.csv"
+    output_path = os.path.join(output_dir, output_filename)
 
     # --- overwrite logic
     if overwrite and os.path.exists(output_path):
@@ -222,10 +236,10 @@ def run_vanilla_qaoa(
 # =========================
 if __name__ == "__main__":
     df = run_vanilla_qaoa(
-        data_path="ADAPT.jl_results/test/11_nodes",
+        data_path="ADAPT.jl_results/2026-01-14_20-29",
         depth=None,
-        n_samples=None,
-        n_runs=5
+        n_samples=2,
+        n_runs=1
     )
 
     print(df.head())
