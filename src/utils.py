@@ -6,6 +6,7 @@ import networkx as nx
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+from typing import Optional
 import re
 from typing import Tuple, List, Dict
  
@@ -215,7 +216,6 @@ def load_graphs_from_adapt(adapt_df: pd.DataFrame) -> Tuple[List[nx.Graph], pd.D
 # ---------------------------------------------------------------------------
 # ADAPT AGGREGATION
 # ---------------------------------------------------------------------------
- 
 def load_and_aggregate_adapt(
     data_input_path: str,
     debug_limit=None,
@@ -243,6 +243,7 @@ def load_and_aggregate_adapt(
     adapt_agg = adapt_df.groupby("graph_num").agg(
         graph_name        = ("graph_name",   "first"),
         adapt_ar_mean     = ("approx_ratio", "mean"),
+        adapt_time_mean    = ("took_time",    "mean"),
         adapt_ar_best     = ("approx_ratio", "max"),
         adapt_ar_std      = ("approx_ratio", "std"),
         adapt_layers_mean = ("n_layers",     "mean"),
@@ -259,7 +260,35 @@ def load_and_aggregate_adapt(
     print(f"Graphs fed to model    : {len(graphs_unique)}")
  
     return adapt_df, adapt_agg, graphs_unique, meta_df
- 
+
+def preprocess_qaoa_df(qaoa_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Convert raw QAOA runs → per-graph aggregated results
+
+    Output columns:
+        graph_num
+        qaoa_ar_mean
+        qaoa_ar_best
+        qaoa_time_mean
+        qaoa_layers
+    """
+    df = qaoa_df.copy()
+
+    # Extract graph_num from "graph_1" → 1
+    df["graph_num"] = df["graph_name"].str.split("_").str[-1].astype(int)
+
+    # Aggregate per graph
+    agg_df = (
+        df.groupby("graph_num").agg(
+            qaoa_ar_mean  = ("approx_ratio", "mean"),
+            qaoa_ar_best  = ("approx_ratio", "max"),
+            qaoa_time_mean= ("took_time", "mean"),
+            qaoa_layers   = ("n_layers", "first"),  # same for all runs
+        )
+        .reset_index()
+    )
+
+    return agg_df
  
 def build_results_df(
     meta_df: pd.DataFrame,
@@ -285,48 +314,62 @@ def build_results_df(
         "model_error_rate" : error_rate.values,
     })
  
- 
-def build_final_df(adapt_agg: pd.DataFrame, model_results_df: pd.DataFrame) -> pd.DataFrame:
+def build_final_df(
+    adapt_agg: pd.DataFrame,
+    model_results_df: pd.DataFrame,
+    qaoa_df: Optional[pd.DataFrame] = None,
+) -> pd.DataFrame:
     """
-    Merge ADAPT aggregates with model results and compute diff columns.
- 
-    Adds: ar_diff_vs_mean, ar_diff_vs_best, layer_diff
+    Merge ADAPT + model + optional QAOA (no diff columns)
     """
+
+    # ------------------------
+    # BASE MERGE
+    # ------------------------
     final_df = adapt_agg.merge(model_results_df, on="graph_num")
- 
+
     if "graph_name_x" in final_df.columns:
         final_df = final_df.rename(columns={"graph_name_x": "graph_name"}).drop(
             columns=["graph_name_y"], errors="ignore"
         )
- 
-    final_df["ar_diff_vs_mean"] = final_df["model_ar"]     - final_df["adapt_ar_mean"]
-    final_df["ar_diff_vs_best"] = final_df["model_ar"]     - final_df["adapt_ar_best"]
-    final_df["layer_diff"]      = final_df["model_layers"] - final_df["adapt_layers_mean"]
- 
+
+    # ------------------------
+    # ADD QAOA
+    # ------------------------
+    if qaoa_df is not None:
+        qaoa_agg = preprocess_qaoa_df(qaoa_df)
+        final_df = final_df.merge(qaoa_agg, on="graph_num", how="left")
+
     return final_df.sort_values("graph_num").reset_index(drop=True)
- 
  
 def build_summary_df(final_df: pd.DataFrame) -> pd.DataFrame:
     """
-    Aggregate final_df to one row per model for high-level comparison.
-    Includes arch and method columns for downstream grouping plots.
+    Aggregate to one row per model (clean version)
     """
-    return (
-        final_df.groupby("model").agg(
-            arch             = ("arch",             "first"),
-            method           = ("method",           "first"),
-            adapt_ar_mean    = ("adapt_ar_mean",    "mean"),
-            adapt_ar_best    = ("adapt_ar_best",    "mean"),
-            model_ar         = ("model_ar",         "mean"),
-            adapt_layers     = ("adapt_layers_mean","mean"),
-            model_error_rate = ("model_error_rate", "mean"),
-            model_layers     = ("model_layers",     "mean"),
-            ar_diff_vs_mean  = ("ar_diff_vs_mean",  "mean"),
-            ar_diff_vs_best  = ("ar_diff_vs_best",  "mean"),
-            n_graphs         = ("graph_num",        "count"),
-        )
-        .reset_index()
-    )
+
+    agg_dict = {
+        "arch":              ("arch",             "first"),
+        "method":            ("method",           "first"),
+        "adapt_ar_mean":     ("adapt_ar_mean",    "mean"),
+        "adapt_ar_best":     ("adapt_ar_best",    "mean"),
+        "adapt_layers":      ("adapt_layers_mean","mean"),
+        "adapt_time_mean":   ("adapt_time_mean","mean"),
+        "model_ar":          ("model_ar",         "mean"),
+        "model_error_rate":  ("model_error_rate", "mean"),
+        "model_layers":      ("model_layers",     "mean"),
+    }
+
+    # Add QAOA if exists
+    if "qaoa_ar_mean" in final_df.columns:
+        agg_dict.update({
+            "qaoa_ar_mean":   ("qaoa_ar_mean", "mean"),
+            "qaoa_ar_best":   ("qaoa_ar_best", "mean"),
+            "qaoa_layers":    ("qaoa_layers", "mean"),
+            "qaoa_time_mean": ("qaoa_time_mean", "mean"),
+        })
+
+    return final_df.groupby("model").agg(**agg_dict).reset_index()
+
 
 def maxcut_bruteforce(G):
     """

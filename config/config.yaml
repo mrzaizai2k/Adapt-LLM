@@ -25,7 +25,7 @@ gnn:
 
   TEMPERATURE: 0.2
 
-  MODEL_PATH: "models/gnn_graph_encoder_contrastive.pt"
+  MODEL_PATH: "models/gnn_graph_encoder_contrastive_test.pt"
 
 feather:
   FEATHER_ORDER: 5
