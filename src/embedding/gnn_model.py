@@ -113,7 +113,6 @@ class GNN:
 
         with torch.no_grad():
             for G in tqdm(graphs, desc="GNN"):
-                # 🔑 make inference match training distribution
                 self._ensure_node_features(G)
 
                 data = nx_to_pyg(G).to(self.device)
@@ -123,7 +122,13 @@ class GNN:
                 )
 
                 emb = self.model(data.x, data.edge_index, batch)
-                embeddings.append(emb.squeeze(0).cpu().numpy())
+                emb = emb.squeeze(0).cpu().numpy()
+
+                # ✅ CLIP then ROUND
+                emb = np.clip(emb, 0.01, 0.99)
+                emb = np.round(emb, 2)
+
+                embeddings.append(emb)
 
         embeddings = np.stack(embeddings)
         print("GNN shape:", embeddings.shape)
