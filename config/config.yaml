@@ -18,14 +18,17 @@ gnn:
   HIDDEN_DIM: 128
   NUM_LAYERS: 3
 
-  EPOCHS: 20
+  EPOCHS: 200
   LR: 1e-3
   WEIGHT_DECAY: 1e-4
   BATCH_SIZE: 32
 
   TEMPERATURE: 0.2
 
-  MODEL_PATH: "models/gnn_graph_encoder_contrastive_test.pt"
+  MODEL_PATH: "models/gnn_graph_encoder_contrastive.pt"
+
+  QAOA_MODEL_CKPT: "nanoGPT/out-10_nodes_gnn/gpt_ckpt_3500_gnn_ar_0_95553__er_0_0.pt"
+  QAOA_DATA_DIR: "nanoGPT/data/10_nodes_gnn"
 
 feather:
   FEATHER_ORDER: 5

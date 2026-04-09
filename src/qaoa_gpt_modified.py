@@ -6,6 +6,7 @@ import torch
 from nanoGPT.model_pad_gemb import GPTConfig as GPTConfig_gemb, GPT as GPT_gemb
 from nanoGPT.model_llama import LlamaConfig, Llama
 
+import numpy as np
 import pandas as pd
 from pathlib import Path
 
@@ -138,14 +139,30 @@ class QAOA_GPT():
         max_new_tokens=150,
         temperature=0.1,
         top_k=200,
+        graph_embeddings=None,   # NEW: optional (N, emb_dim) np.ndarray or torch.Tensor
     ):
-
         graphs_nx_df, graph_par_emb, emb_graph_id_to_idx_dict = prepare_model_input(
             graphs_container,
             n_nodes=self.n_nodes,
             calculate_classic_maxcut=calculate_classic_maxcut,
             embedding_method=self.embedding_method,
         )
+
+        # ------------------------------------------------------------------
+        # Override the computed graph embeddings with GNN embeddings when
+        # provided.  graph_embeddings must have shape (N, emb_dim) and be
+        # ordered to match graphs_container (same order used by
+        # prepare_model_input / emb_graph_id_to_idx_dict).
+        # ------------------------------------------------------------------
+        if graph_embeddings is not None:
+            if isinstance(graph_embeddings, torch.Tensor):
+                graph_embeddings = graph_embeddings.detach().cpu().numpy()
+            graph_embeddings = np.asarray(graph_embeddings, dtype=np.float32)
+            # graph_par_emb rows are indexed by emb_graph_id_to_idx_dict values;
+            # replace every row that has a corresponding GNN embedding.
+            for graph_id, idx in emb_graph_id_to_idx_dict.items():
+                if idx < len(graph_embeddings):
+                    graph_par_emb[idx] = graph_embeddings[idx]
 
         if self.device == "cpu":
             emb_dtype = "float"
@@ -170,8 +187,6 @@ class QAOA_GPT():
             emb_dtype=dtype_str_to_torch_dict[emb_dtype],
         )
 
-        self.gc_df = gc_df
-        self.graph_par_emb= graph_par_emb
         return gc_df
 
     def eval_circ_df_jl(
@@ -199,8 +214,7 @@ class QAOA_GPT():
         if "energy_mqlib" in qaoa_gpt_circ_df.columns:
             output_columns_list.append("energy_mqlib")
 
-        #This is  enrgy calculated by gurobi (classical brute-force), which is the optimal solution for maxcut
-        if "energy_gurobi" in qaoa_gpt_circ_df.columns: 
+        if "energy_gurobi" in qaoa_gpt_circ_df.columns:
             output_columns_list.append("energy_gurobi")
 
         return qaoa_gpt_circ_eval_df[output_columns_list]
