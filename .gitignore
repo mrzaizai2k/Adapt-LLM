@@ -27,3 +27,5 @@ nanoGPT/data/test/
 *.npy
 *.pkl
 *.pt
+
+docs/
