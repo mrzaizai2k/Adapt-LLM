@@ -1,54 +1,207 @@
-# QAOA-GPT
+# Hybrid LLM-GNN Assisted ADAPT-QAOA for Optimizing Graph-Structured Quantum Circuits
 
-This repo contains code for the work: [QAOA-GPT: Efficient Generation of Adaptive and Regular Quantum Approximate Optimization Algorithm Circuits](https://arxiv.org/abs/2504.16350).
+## 📑 Table of Contents
+
+* [Overview](#overview)
+* [Key Contributions](#key-contributions)
+* [Quick Start Guide](#quick-start-guide)
+
+  * [Installation](#installation)
+  * [Pipeline](#pipeline)
+* [Usage](#usage)
+* [Data Availability](#data-availability)
+* [Project Structure](#project-structure)
+
+---
+
+## Overview
+
+Combinatorial optimization problems are central to applications such as logistics and network design, yet they become increasingly difficult for classical algorithms as problem size grows.
+
+Hybrid quantum–classical methods like **QAOA (Quantum Approximate Optimization Algorithm)** offer a promising alternative. Its adaptive variant improves flexibility by dynamically constructing circuits, but still faces two major challenges:
+
+* Efficient circuit structure generation
+* Stable and effective parameter initialization
+
+Existing approaches typically treat these problems separately, limiting generalization and performance—especially on weighted graphs.
+
+This project introduces a **unified generative–predictive framework** that:
+
+* Encodes graph structure via embeddings (**NetLSD, FEATHER, GNNs**)
+* Uses transformer models (**nanoGPT, LLaMA**) to autoregressively generate circuits
+* Jointly models circuit structure and parameters in a single sequence
+
+The result is:
+
+* Faster convergence
+* Improved approximation quality
+* Reduced circuit depth with maintained performance
+
+---
+
+## Key Contributions
+
+* Unified framework combining **generation + optimization**
+* Integration of **graph embeddings into LLMs**
+* Support for multiple embedding methods:
+
+  * GNN
+  * NetLSD
+  * FEATHER
+* Improved generalization across:
+
+  * Circuit depths
+  * Graph types (weighted & unweighted)
+
+---
 
 ## Quick Start Guide
 
-**Installing**:
-- Julia part:
-	1. Install Julia: https://julialang.org/downloads/ 
-	2. For your convenience, you can also add Julia kernel to your Jupyter: https://julialang.github.io/IJulia.jl/stable/manual/installation/ (Julia notebooks are not used in this repo, but can be handy for debugging)
-- Python part:
-	1. Create conda environment:  `conda create -n adapt_gpt python=3.10 -y`
-	2. Activate it: `conda activate adapt_gpt`
-	3. Install python dependencies: `pip install -r requirements.txt`
-3. ADAPT GPT codebase:
-	1. Clone this repo with its dependencies: `git clone https://github.com/IlyaTyagin/ADAPT-GPT --recurse-submodules`
-	2. `cd ADAPT-GPT/ADAPT.jl/`
-	3. Run julia: `julia --project=.`
-	4. Install Julia dependencies. Inside julia interpreter run: `julia> using Pkg; Pkg.instantiate(); Pkg.add(["JuMP", "MQLib" , "ProgressBars", "SimpleWeightedGraphs", "CSV", "DataFrames", "JSON", "ArgParse", "Multibreak"]); Pkg.develop(path="SciPyOptimizers");` 
+### Installation
 
-**Running**:
+#### 1. Julia Setup
 
-The pipeline is run as follows:
-1. Generate graph-circuit pairs with ADAPT.jl:
-	- Run multithreaded ADAPT (you can edit the `adapt_maxcut_run_multithread.sh` script to adjust the parameters): `./adapt_maxcut_run_multithread.sh`
-	- Note: for a meaningful GPT model, we need at least 50k circuits. This number usually requires a CPU-based cluster.
-2. Tokenize them and prepare for GPT training:
-	- Run: `python prepare_circ.py --adapt_results_dir <ADAPT_RESULTS_DIR> --save_dir <SAVING_DIR> --n_nodes <N_NODES>`, where `<N_NODES>` is the problem size (qubits/graph nodes) for all circuits in the dataset.
-	- Note: nanoGPT expects `<SAVING_DIR>` to be a folder inside `nanoGPT/data`
-3. Train GPT model:
-	1. Go to nanoGPT directory: `cd nanoGPT/`
-	2. Run: `python train_pad_gemb_ar_eval.py --train_config_path <SAVING_DIR>/train_adapt_gpt_config.py --model gpt`
-4. Use a pre-trained model for inference:
-	1. Generate circuits for random graphs and evaluate them with ADAPT.jl. Notebook: `qaoa_gpt_inference_demo.ipynb`
+1. Install Julia: [https://julialang.org/downloads/](https://julialang.org/downloads/)
+2. (Optional) Add Jupyter kernel: [https://julialang.github.io/IJulia.jl/stable/manual/installation/](https://julialang.github.io/IJulia.jl/stable/manual/installation/)
 
-## Data Availability 
+You should check this code `install_julia.md` for more
 
-Pre-trained models that we used to generate results in our paper are available here: [Google Drive Link](https://drive.google.com/drive/folders/1ddMW1iLYlhd_Nb-ZyRFY1ktdZ9tDlNjQ).
+#### 2. Python Setup
 
-## Citing 
-
-If you found our work useful, please cite [our paper](https://arxiv.org/abs/2504.16350) (accepted at IEEE International Conference on Quantum Computing and Engineering 2025 - QCE25, proceedings will be available later):
-
-```
-@article{tyagin2025qaoa,
-  title={QAOA-GPT: Efficient Generation of Adaptive and Regular Quantum Approximate Optimization Algorithm Circuits},
-  author={Tyagin, Ilya and Farag, Marwa H and Sherbert, Kyle and Shirali, Karunya and Alexeev, Yuri and Safro, Ilya},
-  journal={arXiv preprint arXiv:2504.16350},
-  year={2025}
-}
-
+```bash
+conda create -n adapt_gpt python=3.10 -y
+conda activate adapt_gpt
+pip install -r requirements.txt
 ```
 
-Note: The code `adapt_maxcut_run_multithread.sh` don't filter circuit with AR < thr. Only filter in this code  `prepare_circ.py`
+#### 3. Clone Repository
+
+Run Julia and install dependencies:
+
+1. Clone this repo with its dependencies: `git clone https://github.com/IlyaTyagin/ADAPT-GPT --recurse-submodules`
+2. `cd ADAPT-GPT/ADAPT.jl/`
+3. Run julia: `julia --project=.`
+4. Install Julia dependencies. Inside julia interpreter run: `julia> using Pkg; Pkg.instantiate(); Pkg.add(["JuMP", "MQLib" , "ProgressBars", "SimpleWeightedGraphs", "CSV", "DataFrames", "JSON", "ArgParse", "Multibreak"]); Pkg.develop(path="SciPyOptimizers");` 
+
+
+---
+
+### Pipeline
+
+#### 1. Generate Graph–Circuit Data
+
+```bash
+./adapt_maxcut_run_multithread.sh
+```
+
+⚠️ Recommended: ≥ 50k circuits (requires CPU cluster)
+
+---
+
+#### 2. (Optional) Train GNN Embeddings
+
+* Configure: `config/config.yaml`
+* Run: `gnn_training.ipynb`
+* Save models to: `models/`
+
+---
+
+#### 3. Prepare Dataset for LLM
+
+```bash
+python prepare_circ.py --adapt_results_dir <ADAPT_RESULTS_DIR> --save_dir <SAVING_DIR> --n_nodes <N_NODES> --embedding_method <embedding_method>
+```
+where `<N_NODES>` is the problem size (qubits/graph nodes) for all circuits in the dataset, embedding methods are `'feather', 'gnn', 'netlsd'`
+
+📌 Note: `<SAVING_DIR>` must be inside `nanoGPT/data`
+
+---
+
+#### 4. Train LLM (nanoGPT / LLaMA)
+
+```bash
+cd nanoGPT/
+
+python train_pad_gemb_ar_eval.py --train_config_path <SAVING_DIR>/train_adapt_gpt_config.py --model <gpt | llama>
+```
+
+---
+
+#### 5. Inference
+
+* Notebook: `qaoa_gpt_inference_demo.ipynb`
+* Generates circuits and evaluates with ADAPT.jl
+
+---
+
+## Usage
+
+* Example commands available in `Makefile`
+* Supports:
+
+  * Circuit generation
+  * Evaluation vs ADAPT-QAOA & vanilla QAOA
+  * Embedding comparison
+  * Model architecture comparison
+
+---
+
+## Data Availability
+
+* Pre-trained models:
+  👉 [https://drive.google.com/drive/folders/1ddMW1iLYlhd_Nb-ZyRFY1ktdZ9tDlNjQ](https://drive.google.com/drive/folders/1ddMW1iLYlhd_Nb-ZyRFY1ktdZ9tDlNjQ)
+
+Notes:
+
+* No precomputed embedding datasets are provided
+* Users are encouraged to generate embeddings independently
+
+⚠️ Important:
+
+* `adapt_maxcut_run_multithread.sh` does **not filter low AR circuits**
+* Filtering is handled in `prepare_circ.py`
+
+---
+
+## Project Structure
+
+```
+ADAPT.jl_results/              # Generated training data
+ADAPT.jl_results/test/         # Evaluation datasets
+
+config/config.yaml             # Embedding configuration
+
+prepare_circ.py                # Data preprocessing & tokenization
+
+src/
+├── embedding/                 # GNN, NetLSD, FEATHER implementations
+├── adapt_utils.py             # ADAPT result utilities
+├── circuit_util.py            # Input preparation
+├── model_interface.py         # LLM inference interface
+├── utils.py                   # Common utilities & plotting
+├── vanilla_qaoa_result.py     # Baseline QAOA evaluation
+
+models/                        # Trained GNN models
+
+nanoGPT/
+├── data/                      # Processed datasets
+├── model_llama.py             # LLaMA implementation
+├── model_pad_gemb.py          # nanoGPT variant
+├── train_pad_gemb_ar_eval.py  # Training script
+
+notebooks/
+├── gnn_training.ipynb
+├── emb_comparison.ipynb
+├── Adapt_llm_comparision.ipynb
+├── ar_emb_compare.ipynb
+├── qaoa_gpt_inference_demo.ipynb
+
+scripts/
+└── adapt_maxcut_run_multithread.sh
+
+evaluation/
+└── adapt_gpt_eval_energy.jl
+
+docs/                          # Visualization results (n = 9, 10, 11)
+```
+
