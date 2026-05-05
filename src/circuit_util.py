@@ -432,7 +432,6 @@ def seq_tokenize_graph(elist):
 
 def prepare_model_input(
     graphs_container,
-    n_nodes,
     calculate_classic_maxcut=True,
     embedding_method='feather',
 ):
@@ -464,9 +463,8 @@ def prepare_model_input(
     graphs_nx_df['edgelist_json'] = graphs_nx_df['elist'].apply(lambda x: json.dumps(x))
 
     print(f"Performing {embedding_method} embedding")
-    feather_par_emb, emb_graph_idx_to_id_dict = get_embedding(
+    graph_par_emb, emb_graph_idx_to_id_dict = get_embedding(
         graphs_nx_df,
-        n_nodes=n_nodes,
         method=embedding_method,
     )
     
@@ -482,6 +480,6 @@ def prepare_model_input(
     
     graphs_nx_df['graph_id'].apply(lambda x: x[:2]).value_counts()
     
-    return graphs_nx_df, feather_par_emb, emb_graph_id_to_idx_dict
+    return graphs_nx_df, graph_par_emb, emb_graph_id_to_idx_dict
 
 

@@ -12,7 +12,6 @@ from src.embedding.gnn_model import GNN
 
 def get_embedding(
     graphs_nx_df,
-    n_nodes: int,
     rounding_digits: int = 2,
     method: Literal["feather", "gnn", "netlsd"] = "feather",
 ):
@@ -54,13 +53,12 @@ def get_embedding(
         combined_unique_graphs_df["graph_id"],
         combined_unique_graphs_df["graph_nx"],
     ):
-        if g.number_of_nodes() == n_nodes:
-            graphs_nx_filt_names.append(graph_id)
-            graphs_nx_filt_list.append(g)
+        graphs_nx_filt_names.append(graph_id)
+        graphs_nx_filt_list.append(g)
 
     if not graphs_nx_filt_list:
-        raise ValueError(f"No graphs found with n_nodes={n_nodes}")
-
+        print(f"No graphs found")
+        
     # -----------------------
     # Index mappings
     # -----------------------
@@ -133,7 +131,6 @@ if __name__ == "__main__":
 
     emb, idx_to_id = get_embedding(
         graphs_nx_df=graphs_nx_df,
-        n_nodes=n_nodes,
         rounding_digits=rounding_digits,
         method='feather',
     )
@@ -150,7 +147,6 @@ if __name__ == "__main__":
 
     emb, idx_to_id = get_embedding(
         graphs_nx_df=graphs_nx_df,
-        n_nodes=n_nodes,
         rounding_digits=rounding_digits,
         method="netlsd",
     )
@@ -164,7 +160,6 @@ if __name__ == "__main__":
 
     emb, idx_to_id = get_embedding(
         graphs_nx_df,
-        n_nodes,
         rounding_digits,
         method="gnn",
     )

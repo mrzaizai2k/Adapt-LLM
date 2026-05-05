@@ -1,6 +1,7 @@
 import sys
 sys.path.append("")
 
+import time
 from contextlib import nullcontext
 import torch
 from nanoGPT.model_pad_gemb import GPTConfig as GPTConfig_gemb, GPT as GPT_gemb
@@ -140,9 +141,9 @@ class QAOA_GPT():
         top_k=200,
     ):
 
+        start_time = time.time()
         graphs_nx_df, graph_par_emb, emb_graph_id_to_idx_dict = prepare_model_input(
             graphs_container,
-            n_nodes=self.n_nodes,
             calculate_classic_maxcut=calculate_classic_maxcut,
             embedding_method=self.embedding_method,
         )
@@ -151,6 +152,9 @@ class QAOA_GPT():
             emb_dtype = "float"
         else:
             emb_dtype = self.dtype
+
+        # print("graph_par_emb:", graph_par_emb)
+        # print("len(graph_par_emb[0]):", len(graph_par_emb[0]))
 
         gc_df = generate_circ_from_df(
             graphs_nx_df,
@@ -169,9 +173,15 @@ class QAOA_GPT():
             normalize_weights_flag=False,
             emb_dtype=dtype_str_to_torch_dict[emb_dtype],
         )
+        # print("gc_df:", gc_df.head())
+        took_time = time.time() - start_time  # <-- add
 
+        gc_df["took_time"] = took_time
+        
         self.gc_df = gc_df
         self.graph_par_emb= graph_par_emb
+   
+
         return gc_df
 
     def eval_circ_df_jl(

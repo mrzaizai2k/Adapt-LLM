@@ -1,3 +1,6 @@
+import sys
+sys.path.append("")
+
 from datetime import datetime
 import numpy as np
 
@@ -13,7 +16,7 @@ import networkx as nx
 from qaoa import QAOA, problems, mixers, initialstates
 from qiskit_algorithms.optimizers import L_BFGS_B
 
-from utils import maxcut_bruteforce
+from src.utils import maxcut_bruteforce
 
 
 # =========================
@@ -236,7 +239,7 @@ def run_vanilla_qaoa(
 # =========================
 if __name__ == "__main__":
     df = run_vanilla_qaoa(
-        data_path="ADAPT.jl_results/2026-01-14_20-29",
+        data_path="ADAPT.jl_results/test/time/graphs_n4",
         depth=None,
         n_samples=2,
         n_runs=1
