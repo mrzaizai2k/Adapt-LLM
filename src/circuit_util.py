@@ -10,6 +10,7 @@ from collections import defaultdict
 import networkx as nx
 import json
 from typing import Tuple
+import warnings
 from gurobipy import Model, GRB
 from src.get_embedding import get_embedding
 
@@ -51,37 +52,60 @@ def circ_sanity_check(cur_q_circ):
 
     return True
 
-
 def generate_circ_from_df(
     test_run_df,
-    graph_emb_np, # for models with graph emb
-    emb_graph_id_to_idx_dict, # for models with graph emb
+    graph_emb_np,
+    emb_graph_id_to_idx_dict,
     meta,
     model,
     device,
     ctx,
     n_samples_per_batch,
-    num_samples = 5, # number of samples to draw
-    max_new_tokens = 200, # number of tokens generated in each sample
-    temperature = 0.1, # 1.0 = no change, < 1.0 = less random, > 1.0 = more random, in predictions
-    top_k = 200, # retain only the top_k most likely tokens, clamp others to have 0 probability
+    num_samples = 5,
+    max_new_tokens = 200,
+    temperature = 0.1,
+    top_k = 200,
     token_seq_col = 'token_seq_round_d2',
     normalize_weights_flag = False,
     emb_dtype=torch.bfloat16,
+    allow_larger_graphs = False,  # NEW: set True to handle OOV edge tokens via modulo remap
 ):
-    # Batched inference based on number of edges. 
-    # We group graphs with the same number of edges together
-    # such that we can merge them into a tensor to keep the input length size consistent.
-
     if graph_emb_np is not None and emb_graph_id_to_idx_dict is not None:
         gemb_flag = True
     else:
         gemb_flag = False
     
     stoi, itos = meta['stoi'], meta['itos']
-    encode = lambda s: [stoi[c] for c in s]
+
+    # --- encode/decode: two modes depending on allow_larger_graphs ---
+    if not allow_larger_graphs:
+        # Original strict encoding — will KeyError on unseen tokens
+        encode = lambda s: [stoi[c] for c in s]
+    else:
+        # Modulo-remap OOV edge tokens so larger graphs can be encoded
+        known_edge_tokens = [k for k in stoi.keys() if isinstance(k, tuple)]
+        if not known_edge_tokens:
+            raise ValueError("No edge tuple tokens found in stoi; cannot build remap table.")
+        max_known_node = max(max(k) for k in known_edge_tokens)
+
+        def _remap_token(c):
+            if c in stoi:
+                return stoi[c]
+            if isinstance(c, tuple):
+                remapped = tuple(sorted(n % (max_known_node + 1) for n in c))
+                if remapped in stoi:
+                    return stoi[remapped]
+            warnings.warn(
+                f"OOV token {c!r} could not be remapped (no match after modulo); using token 0.",
+                stacklevel=2,
+            )
+            return 0
+
+        encode = lambda s: [_remap_token(c) for c in s]
+
     decode = lambda l: [itos[i] for i in l]
-    
+    # --- end encode/decode ---
+
     n_edges_to_count_dict = test_run_df['edgelist_list_len'].value_counts().to_dict()
     
     adapt_gpt_out_list_dict = defaultdict(list)
@@ -93,12 +117,9 @@ def generate_circ_from_df(
     
     for n_edges, n_graphs in pbar:
         pbar.set_description(f"Inference. Current batch: n_edges: {n_edges}, n_graphs: {n_graphs}")
-        cur_test_run_df = test_run_df[
-            test_run_df['edgelist_list_len'] == n_edges
-        ]
+        cur_test_run_df = test_run_df[test_run_df['edgelist_list_len'] == n_edges]
         
         for row_idx, graph_df_row in cur_test_run_df.iterrows():
-        #graph_df_row = test_df.loc[graph_idx]
             start, adapt_seq = extract_graph(graph_df_row[token_seq_col])
             start_ids = encode(start)
             x = (torch.tensor(start_ids, dtype=torch.long, device=device)[None, ...])
@@ -128,27 +149,23 @@ def generate_circ_from_df(
         
         if gemb_flag:
             cur_emb_batch_torch = torch.vstack(graph_emb_dict[n_edges])
-        #print(f"emb_dtype: {cur_emb_batch_torch.dtype}")
     
-        # Calculate total samples and number of mini-batches
         total_samples = cur_batch_torch.size(0)
-        n_batches = (total_samples + n_samples_per_batch - 1) // n_samples_per_batch  # Ensure ceiling division
+        n_batches = (total_samples + n_samples_per_batch - 1) // n_samples_per_batch
     
-        # Initialize an empty list for results
         y_list = []
         
-        # Run inference in mini-batches
         with torch.no_grad():
             for i in tqdm(range(n_batches), desc='Internal batch progress', disable=True):
                 start_idx = i * n_samples_per_batch
                 end_idx = min((i + 1) * n_samples_per_batch, total_samples)
                 
                 mini_batch = cur_batch_torch[start_idx:end_idx]
-                mini_batch_repeated = mini_batch.repeat(num_samples, 1) # Repeat the mini-batch for num_samples
+                mini_batch_repeated = mini_batch.repeat(num_samples, 1)
 
                 if gemb_flag:
                     mini_emb_batch = cur_emb_batch_torch[start_idx:end_idx]
-                    mini_emb_batch_repeated = mini_emb_batch.repeat(num_samples, 1) # Repeat the mini-batch for num_samples
+                    mini_emb_batch_repeated = mini_emb_batch.repeat(num_samples, 1)
         
                 with ctx:
                     if gemb_flag:
@@ -162,25 +179,20 @@ def generate_circ_from_df(
                     else:
                         y = model.generate(
                             mini_batch_repeated,
-                            #mini_emb_batch_repeated,
                             max_new_tokens,
                             temperature=temperature,
                             top_k=top_k
                         )
         
-                # Collect results from each mini-batch
                 y_list.append(y.detach().cpu())
         
-        # Concatenate results from all mini-batches
         y_dict[n_edges] = torch.cat(y_list, dim=0)
 
-    
     ### trimming the records (removing garbage after EOS)
     for n_edges, cur_adapt_gpt_out_list in adapt_gpt_out_list_dict.items():
         cur_full_y_tensor = y_dict[n_edges]
         
         for graph_idx in range(len(cur_adapt_gpt_out_list)):
-            
             cur_y_tensor = cur_full_y_tensor[graph_idx::len(cur_adapt_gpt_out_list)]
             
             for k in range(num_samples):
@@ -196,66 +208,42 @@ def generate_circ_from_df(
                         break
                 cur_adapt_gpt_out_list[graph_idx]['q_circuits'].append(cur_circ[1:-1])
 
-        ### flattening the circ list
-        adapt_gpt_test_samples_list = []
-        for n_edges, cur_adapt_gpt_out_list in adapt_gpt_out_list_dict.items():
-            adapt_gpt_test_samples_list += cur_adapt_gpt_out_list
+    ### flattening the circ list
+    adapt_gpt_test_samples_list = []
+    for n_edges, cur_adapt_gpt_out_list in adapt_gpt_out_list_dict.items():
+        adapt_gpt_test_samples_list += cur_adapt_gpt_out_list
 
-        # Early exit if empty
-        if len(adapt_gpt_test_samples_list) == 0:
-            print("Warning: No graphs to process. Returning empty DataFrame.")
-            return pd.DataFrame()
+    if len(adapt_gpt_test_samples_list) == 0:
+        print("Warning: No graphs to process. Returning empty DataFrame.")
+        return pd.DataFrame()
 
     for idx in range(len(adapt_gpt_test_samples_list)):
         q_circ_filt_list = []
         for circ in adapt_gpt_test_samples_list[idx]['q_circuits']:
-            filt_flag = circ_sanity_check(circ)
-            # if not filt_flag:
-            #     #print(adapt_gpt_test_samples_list[idx]['graph_prefix'], '\n')
-            #     pass
-            # else:
-            #     q_circ_filt_list.append(circ)
+            circ_sanity_check(circ)
             q_circ_filt_list.append(circ)
-
-    adapt_gpt_test_samples_list[idx]['q_circuits'] = q_circ_filt_list
+        adapt_gpt_test_samples_list[idx]['q_circuits'] = q_circ_filt_list
 
     for gr_dict in adapt_gpt_test_samples_list:
         graph_jl_list = []
-    
         graph_edges_list = gr_dict['graph'][::2]
         graph_weights_list = gr_dict['graph'][1::2]
     
-        if normalize_weights_flag:
-            graph_w_norm = sum(graph_weights_list)
-        else:
-            graph_w_norm = 1.0
+        graph_w_norm = sum(graph_weights_list) if normalize_weights_flag else 1.0
         
         for edge_idx, edge in enumerate(graph_edges_list):
             cur_edge = list(edge)
-            cur_edge += [graph_weights_list[edge_idx]/graph_w_norm]
+            cur_edge += [graph_weights_list[edge_idx] / graph_w_norm]
             graph_jl_list.append(cur_edge)
     
         gr_dict['graph_w_jl'] = graph_jl_list
         gr_dict['graph_weight_norm'] = graph_w_norm
 
-    ## make it more error-prone
+    adapt_gpt_test_samples_filt_list = [
+        rec for rec in adapt_gpt_test_samples_list if rec  # pos_flag always 1; keep hook for future filters
+    ]
 
-    adapt_gpt_test_samples_filt_list = []
-    
-    for rec in adapt_gpt_test_samples_list:
-        pos_flag = 1
-        # if len(rec['adapt_circuit']) % 4:
-        #     pos_flag = 0
-        # for gpt_circ in rec['q_circuits']:
-        #     if len(gpt_circ) % 4:
-        #         pos_flag = 0
-        
-        if pos_flag:
-            adapt_gpt_test_samples_filt_list.append(rec)
-
-    adapt_gpt_test_samples_df = pd.DataFrame(adapt_gpt_test_samples_filt_list)
-
-    return adapt_gpt_test_samples_df
+    return pd.DataFrame(adapt_gpt_test_samples_filt_list)
 
 def fix_new_layer_p(df):
     """

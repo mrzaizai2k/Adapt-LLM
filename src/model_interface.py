@@ -139,6 +139,7 @@ class QAOA_GPT():
         max_new_tokens=150,
         temperature=0.1,
         top_k=200,
+        allow_larger_graphs=False,
     ):
 
         start_time = time.time()
@@ -172,6 +173,7 @@ class QAOA_GPT():
             token_seq_col="token_seq_round_d2",
             normalize_weights_flag=False,
             emb_dtype=dtype_str_to_torch_dict[emb_dtype],
+            allow_larger_graphs=allow_larger_graphs,
         )
         # print("gc_df:", gc_df.head())
         took_time = time.time() - start_time  # <-- add
