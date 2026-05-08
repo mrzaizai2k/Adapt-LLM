@@ -102,7 +102,20 @@ function eval_ansatz(
     ADAPT.bind!(ansatz, angles);  #= <- this is your reconstructed ansatz =#
 
     # TEST: EVALUATE FINAL ENERGY - SHOULD MATCH LAST ENERGY FOR THAT "run"
+    
     ψEND = ADAPT.evolve_state(ansatz, ψ0);
     E_final = ADAPT.evaluate(H, ψEND);
-    return E_final
+
+    # Extract best cut bitstring
+    probs = abs2.(ψEND)
+    max_idx = argmax(probs)
+
+    bit_int = max_idx - 1
+    best_bitstring = bitstring(bit_int)
+    best_bitstring = best_bitstring[end-n_nodes+1:end]
+
+    println("Best bitstring: ", best_bitstring)
+    println("Probability: ", probs[max_idx])
+
+    return E_final, best_bitstring
 end

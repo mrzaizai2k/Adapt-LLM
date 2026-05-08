@@ -36,6 +36,7 @@ iter = ProgressBar(1:length(adapt_gpt_out_list))
     adapt_gpt_out_dict = adapt_gpt_out_list[graph_idx]
     edgelist = adapt_gpt_out_dict["graph_w_jl"];
     adapt_gpt_energies_list = []
+    adapt_gpt_bitstrings_list = []
     
     for i in 1:(length(adapt_gpt_out_dict["q_circuits"]) + 1)
         if i <= length(adapt_gpt_out_dict["q_circuits"])
@@ -46,9 +47,11 @@ iter = ProgressBar(1:length(adapt_gpt_out_list))
             generated_list =  adapt_gpt_out_dict["adapt_circuit"]
         end
 
-        E_final = 999 # Default value if sth goes wrong
+        E_final = 999
+        best_bitstring = ""
+
         try
-            E_final = suppress_output(
+            E_final, best_bitstring = suppress_output(
                 eval_ansatz,
                 edgelist,
                 generated_list,
@@ -60,12 +63,15 @@ iter = ProgressBar(1:length(adapt_gpt_out_list))
         #println(i)
         if i <= length(adapt_gpt_out_dict["q_circuits"])
             append!(adapt_gpt_energies_list, E_final);
+            push!(adapt_gpt_bitstrings_list, best_bitstring)
         else
             #print("$i ADAPT")
             adapt_gpt_out_dict["ADAPT_energy_round"] = E_final;
+            adapt_gpt_out_dict["ADAPT_bitstring_round"] = best_bitstring;
         end
     end
     adapt_gpt_out_dict["adapt_gpt_energies"] = adapt_gpt_energies_list;
+    adapt_gpt_out_dict["adapt_gpt_bitstrings"] = adapt_gpt_bitstrings_list;
 end
 
 ## Saving

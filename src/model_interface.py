@@ -200,6 +200,7 @@ class QAOA_GPT():
             pool_type=self.pool_type,
         )
 
+        self.qaoa_gpt_circ_eval_df = qaoa_gpt_circ_eval_df
         output_columns_list = [
             "graph_prefix",
             "graph",
