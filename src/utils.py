@@ -9,7 +9,9 @@ import matplotlib.pyplot as plt
 from typing import Optional
 import re
 from typing import Tuple, List, Dict
- 
+from matplotlib.lines import Line2D
+from io import BytesIO
+
 
 def timeit(func):
     def wrapper(*args, **kwargs):
@@ -400,3 +402,77 @@ def maxcut_bruteforce(G):
     best_energy = -best_cut
 
     return best_energy, best_state
+
+
+
+
+# ── Graph/plot utilities ──────────────────────────────────────────────────────
+def parse_graph(graph_raw):
+    edges = []
+    for i in range(0, len(graph_raw), 2):
+        u, v = graph_raw[i]
+        w    = graph_raw[i + 1]
+        edges.append((u, v, w))
+    return edges
+
+def int_to_bitlist(state_int, n_nodes):
+    return [(state_int >> i) & 1 for i in range(n_nodes)]
+
+def compute_cut_value(G, bitstring):
+    cut = 0
+    for u, v, data in G.edges(data=True):
+        if bitstring[u] != bitstring[v]:
+            cut += data.get("weight", 1.0)
+    return cut
+
+def normalize_bitstring(bitstring):
+    if isinstance(bitstring, str):
+        return [int(x) for x in bitstring[::-1]]
+    return bitstring
+
+def draw_cut(ax, G, pos, bitstring, title):
+    node_colors = ["#3b82f6" if bitstring[node] == 0 else "#f97316" for node in G.nodes()]
+    cut_edges   = [(u, v) for u, v in G.edges() if bitstring[u] != bitstring[v]]
+    norm_edges  = [(u, v) for u, v in G.edges() if bitstring[u] == bitstring[v]]
+
+    nx.draw_networkx_nodes(G, pos, node_color=node_colors, node_size=700, ax=ax)
+    nx.draw_networkx_labels(G, pos, ax=ax, font_color="#ffffff", font_weight="bold")
+    nx.draw_networkx_edges(G, pos, edgelist=norm_edges, width=1.5, alpha=0.5, ax=ax, edge_color="#94a3b8")
+    nx.draw_networkx_edges(G, pos, edgelist=cut_edges,  width=3, edge_color="#ef4444", ax=ax)
+    edge_labels = {(u, v): f"{data['weight']:.2f}" for u, v, data in G.edges(data=True)}
+    nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, ax=ax, font_size=8, font_color="#475569")
+
+    legend_elements = [
+        Line2D([0], [0], marker='o', color='w', label='Group 1', markerfacecolor='#3b82f6', markersize=12),
+        Line2D([0], [0], marker='o', color='w', label='Group 2', markerfacecolor='#f97316', markersize=12),
+        Line2D([0], [0], color='#ef4444', lw=3, label='Cut Edge'),
+    ]
+    ax.legend(handles=legend_elements, loc='upper right', framealpha=0.85,
+              labelcolor='#1e293b', facecolor='#f8fafc', edgecolor='#e2e8f0')
+    ax.set_title(title, color='#0f172a', fontsize=13, fontweight='bold', pad=12)
+    ax.axis("off")
+    ax.set_facecolor("#ffffff")
+
+def plot_maxcut_compare_fig(graph_raw, adapt_bitstring, edgelist_to_nx_fn, maxcut_bruteforce_fn):
+    edges     = parse_graph(graph_raw)
+    n_nodes_g = max(max(u, v) for u, v, _ in edges)
+    G         = edgelist_to_nx_fn(edges, n_nodes_g)
+    adapt_bs  = normalize_bitstring(adapt_bitstring)
+    adapt_cut = compute_cut_value(G, adapt_bs)
+    opt_energy, opt_state = maxcut_bruteforce_fn(G)
+    opt_cut   = -opt_energy
+    opt_bs    = int_to_bitlist(opt_state, n_nodes_g)
+
+    pos = nx.spring_layout(G, seed=42)
+    fig, axes = plt.subplots(1, 2, figsize=(14, 6), facecolor="#ffffff")
+    fig.suptitle("MaxCut Solution Comparison", fontsize=18, fontweight="bold", color="#0f172a")
+    draw_cut(axes[0], G, pos, adapt_bs, "LLM-GNN Framework Cut")
+    draw_cut(axes[1], G, pos, opt_bs,   "Brute Force (Optimal) Cut")
+    plt.tight_layout()
+
+    buf = BytesIO()
+    fig.savefig(buf, format="png", dpi=140, bbox_inches="tight", facecolor="#ffffff")
+    buf.seek(0)
+    plt.close(fig)
+    return buf
+

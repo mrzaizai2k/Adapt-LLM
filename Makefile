@@ -17,3 +17,6 @@ train:
 	python prepare_circ.py --adapt_results_dir ADAPT.jl_results/9_nodes --save_dir nanoGPT/data/9_nodes_gnn --n_nodes 9 --embedding_method gnn
 
 # 	python train_pad_gemb_ar_eval.py --train_config_path data/10_nodes_gnn/train_adapt_gpt_config.py --model gpt && \
+
+run:
+	streamlit run main.py
