@@ -17,3 +17,4 @@ jupytext
 torch_geometric
 scikit-learn
 qaoa
+streamlit

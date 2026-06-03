@@ -80,28 +80,51 @@ class QAOA_GPT():
         print(f"Number of nodes: {self.n_nodes}")
 
         # ---------- device ----------
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
-        self.dtype = (
-            "bfloat16"
-            if self.device == "cuda" and torch.cuda.is_bf16_supported()
-            else "float16"
-        )
+        if torch.cuda.is_available():
+            self.device = "cuda"
+
+            if torch.cuda.is_bf16_supported():
+                self.dtype = "bfloat16"
+            else:
+                self.dtype = "float16"
+
+        elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+            # Apple Silicon GPU
+            self.device = "mps"
+            self.dtype = "float32"
+
+        else:
+            self.device = "cpu"
+            self.dtype = "float32"
+
+        print(f"Using device: {self.device}")
+        print(f"Using dtype: {self.dtype}")
+
+        # ---------- seeds ----------
 
         torch.manual_seed(self.seed)
-        if torch.cuda.is_available():
+
+        if self.device == "cuda":
             torch.cuda.manual_seed(self.seed)
 
-        torch.backends.cuda.matmul.allow_tf32 = True
-        torch.backends.cudnn.allow_tf32 = True
+        # ---------- performance settings ----------
+
+        if self.device == "cuda":
+            torch.backends.cuda.matmul.allow_tf32 = True
+            torch.backends.cudnn.allow_tf32 = True
 
         ptdtype = dtype_str_to_torch_dict[self.dtype]
 
-        self.ctx = (
-            nullcontext()
-            if self.device == "cpu"
-            else torch.amp.autocast(device_type="cuda", dtype=ptdtype)
-        )
+        # ---------- autocast context ----------
+
+        if self.device == "cuda":
+            self.ctx = torch.amp.autocast(
+                device_type="cuda",
+                dtype=ptdtype,
+            )
+        else:
+            self.ctx = nullcontext()
 
         self.meta = pd.read_pickle(self.data_dir / "meta.pkl")
 
@@ -114,7 +137,10 @@ class QAOA_GPT():
 
     def open_model(self, model_fpath):
 
-        checkpoint = torch.load(model_fpath, map_location=self.device)
+        checkpoint = torch.load(
+            model_fpath,
+            map_location=torch.device(self.device)
+        )
 
         conf = self.model_config_class(**checkpoint["model_args"])
         model = self.model_class(conf)
@@ -126,7 +152,9 @@ class QAOA_GPT():
                 state_dict[k[10:]] = state_dict.pop(k)
 
         model.load_state_dict(state_dict)
-        model.eval().to(self.device)
+
+        model.to(self.device)
+        model.eval()
 
         return model
 
@@ -149,10 +177,7 @@ class QAOA_GPT():
             embedding_method=self.embedding_method,
         )
 
-        if self.device == "cpu":
-            emb_dtype = "float"
-        else:
-            emb_dtype = self.dtype
+        emb_dtype = self.dtype
 
         # print("graph_par_emb:", graph_par_emb)
         # print("len(graph_par_emb[0]):", len(graph_par_emb[0]))
