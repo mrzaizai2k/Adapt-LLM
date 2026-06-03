@@ -228,8 +228,7 @@ st.markdown("""
 
 # ── File-browser helper ───────────────────────────────────────────────────────
 def file_browser(label, default_value, file_type, key, help_text=""):
-    """Inline path input + 📂 Browse button that lists the parent directory."""
-    # Initialise session state for this browser
+    # _value is the source of truth (never bound to a widget key)
     if f"{key}_value" not in st.session_state:
         st.session_state[f"{key}_value"] = default_value
     if f"{key}_browsing" not in st.session_state:
@@ -237,16 +236,20 @@ def file_browser(label, default_value, file_type, key, help_text=""):
 
     col_input, col_btn = st.columns([3, 1])
     with col_input:
-        typed = st.text_input(label, value=st.session_state[f"{key}_value"],
-                              key=f"{key}_text", help=help_text)
-        st.session_state[f"{key}_value"] = typed
+        # No `key=` on the text input — use `value=` from our own state only
+        typed = st.text_input(
+            label,
+            value=st.session_state[f"{key}_value"],
+            help=help_text,
+        )
+        st.session_state[f"{key}_value"] = typed  # reflect manual edits
+
     with col_btn:
         st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
         if st.button("📂 Browse", key=f"{key}_browse_btn"):
             st.session_state[f"{key}_browsing"] = True
 
     if st.session_state[f"{key}_browsing"]:
-        # For file browsing, start from nanoGPT/ if it exists, otherwise parent of current value
         if file_type == "file":
             start_dir = "nanoGPT" if os.path.isdir("nanoGPT") else (
                 os.path.dirname(st.session_state[f"{key}_value"]) or "."
@@ -259,7 +262,6 @@ def file_browser(label, default_value, file_type, key, help_text=""):
 
         try:
             if file_type == "file":
-                # Walk recursively to find .pt files under start_dir
                 entries = []
                 for root, dirs, files in os.walk(start_dir):
                     dirs.sort()
@@ -284,7 +286,7 @@ def file_browser(label, default_value, file_type, key, help_text=""):
             col_ok, col_cancel = st.columns(2)
             with col_ok:
                 if st.button("✓ Use this", key=f"{key}_use"):
-                    st.session_state[f"{key}_value"] = chosen
+                    st.session_state[f"{key}_value"] = chosen  # update source of truth only
                     st.session_state[f"{key}_browsing"] = False
                     st.rerun()
             with col_cancel:
@@ -335,10 +337,23 @@ with st.sidebar:
 
     st.markdown("---")
     if st.button("▶ Run Inference", type="primary", use_container_width=True):
+        # Snapshot all current values at click time
         st.session_state["run_btn"] = True
+        st.session_state["run_config"] = {
+            "model_ckpt":         model_ckpt,
+            "data_dir":           data_dir,
+            "n_graphs":           int(n_graphs),
+            "n_nodes":            int(n_nodes),
+            "n_samples_per_batch": int(n_samples_per_batch),
+            "num_samples":        int(num_samples),
+            "max_new_tokens":     int(max_new_tokens),
+            "temperature":        float(temperature),
+            "top_k":              int(top_k),
+        }
         for k in ("qaoa_gpt", "graphs", "eval_df", "run_key",
                   "compute_metrics", "maxcut_bruteforce", "edgelist_to_nx"):
             st.session_state.pop(k, None)
+
     run_btn = st.session_state.get("run_btn", False)
 
 
@@ -367,12 +382,21 @@ if not run_btn:
     """)
 
 else:
-    # ── Run inference and cache everything in session_state ───────────────────
-    # Key: (model_ckpt, data_dir, n_graphs, n_nodes, n_samples_per_batch,
-    #        num_samples, max_new_tokens, temperature, top_k)
-    run_key = (model_ckpt, data_dir, int(n_graphs), int(n_nodes),
-               int(n_samples_per_batch), int(num_samples),
-               int(max_new_tokens), float(temperature), int(top_k))
+    # Always use the snapshotted config, not live widget values
+    cfg = st.session_state["run_config"]
+    model_ckpt          = cfg["model_ckpt"]
+    data_dir            = cfg["data_dir"]
+    n_graphs            = cfg["n_graphs"]
+    n_nodes             = cfg["n_nodes"]
+    n_samples_per_batch = cfg["n_samples_per_batch"]
+    num_samples         = cfg["num_samples"]
+    max_new_tokens      = cfg["max_new_tokens"]
+    temperature         = cfg["temperature"]
+    top_k               = cfg["top_k"]
+
+    run_key = (model_ckpt, data_dir, n_graphs, n_nodes,
+               n_samples_per_batch, num_samples,
+               max_new_tokens, temperature, top_k)
 
     if st.session_state.get("run_key") != run_key:
         # Clear stale cache
