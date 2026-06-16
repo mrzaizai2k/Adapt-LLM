@@ -302,6 +302,23 @@ def file_browser(label, default_value, file_type, key, help_text=""):
 
     return st.session_state[f"{key}_value"]
 
+def infer_from_ckpt_path(ckpt_path: str) -> dict:
+    """Try to extract n_nodes and embedding_method from checkpoint path."""
+    try:
+        # e.g. out-10_nodes_feather
+        folder = os.path.basename(os.path.dirname(ckpt_path))
+        import re
+        m = re.search(r'out-(\d+)_nodes_(\w+)', folder)
+        if m:
+            n_nodes = int(m.group(1))
+            emb     = m.group(2)
+            return {
+                "n_nodes": n_nodes,
+                "data_dir": f"nanoGPT/data/{n_nodes}_nodes_{emb}",
+            }
+    except Exception:
+        pass
+    return {}
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
@@ -316,6 +333,15 @@ with st.sidebar:
         key="model_ckpt",
         help_text="Path to the .pt model checkpoint file",
     )
+    # ── Auto-fill from checkpoint path ───────────────────────────────────────
+    _last = st.session_state.get("_last_ckpt_path")
+    if model_ckpt != _last:
+        st.session_state["_last_ckpt_path"] = model_ckpt
+        _inferred = infer_from_ckpt_path(model_ckpt)
+        if _inferred:
+            st.session_state["data_dir_value"] = _inferred["data_dir"]
+            st.session_state["_inferred_n_nodes"] = _inferred["n_nodes"]
+
     data_dir = file_browser(
         label="Data directory (meta.pkl)",
         default_value="nanoGPT/data/10_nodes_feather",
@@ -326,7 +352,13 @@ with st.sidebar:
 
     st.markdown("### 🔗 Graph")
     n_graphs = st.slider("Number of graphs", 1, 20, 5)
-    n_nodes  = st.number_input("Nodes per graph", min_value=2, max_value=20, value=10)
+    # n_nodes  = st.number_input("Nodes per graph", min_value=2, max_value=20, value=10)
+
+    n_nodes = st.number_input(
+        "Nodes per graph",
+        min_value=2, max_value=20,
+        value=st.session_state.get("_inferred_n_nodes", 10),
+    )
 
     st.markdown("### 🤖 Generation")
     n_samples_per_batch = st.slider("Samples per batch", 1, 100, 50)
@@ -552,7 +584,11 @@ else:
     bitstrings = row[bs_col]
 
     if bitstrings is not None and len(bitstrings) > 0:
-        bs_idx    = st.slider("Sample index", 0, len(bitstrings) - 1, 0, key="vis_bs_slider")
+        if len(bitstrings) > 1:
+            bs_idx = st.slider("Sample index", 0, len(bitstrings) - 1, 0, key="vis_bs_slider")
+        else:
+            bs_idx = 0
+            st.caption("Only 1 sample available.")
         bitstring = bitstrings[bs_idx]
 
         try:
