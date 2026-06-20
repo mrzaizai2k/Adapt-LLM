@@ -11,6 +11,7 @@
 * [Usage](#usage)
 * [Data Availability](#data-availability)
 * [Project Structure](#project-structure)
+* [Reference](#reference)
 
 ---
 
@@ -78,7 +79,7 @@ pip install -r requirements.txt
 
 Run Julia and install dependencies:
 
-1. Clone this repo with its dependencies: `git clone https://github.com/IlyaTyagin/ADAPT-GPT --recurse-submodules`
+1. Clone this repo with its dependencies: `git clone https://github.com/mrzaizai2k/Adapt-LLM.git --recurse-submodules`
 2. `cd ADAPT-GPT/ADAPT.jl/`
 3. Run julia: `julia --project=.`
 4. Install Julia dependencies. Inside julia interpreter run: `julia> using Pkg; Pkg.instantiate(); Pkg.add(["JuMP", "MQLib" , "ProgressBars", "SimpleWeightedGraphs", "CSV", "DataFrames", "JSON", "ArgParse", "Multibreak"]); Pkg.develop(path="SciPyOptimizers");` 
@@ -132,6 +133,11 @@ python train_pad_gemb_ar_eval.py --train_config_path <SAVING_DIR>/train_adapt_gp
 * Notebook: `qaoa_gpt_inference_demo.ipynb`
 * Generates circuits and evaluates with ADAPT.jl
 
+#### 6. Run demo
+
+```bash
+  make run
+```
 ---
 
 ## Usage
@@ -195,3 +201,23 @@ evaluation/
 docs/                          # Visualization results (n = 9, 10, 11)
 ```
 
+# REFERENCE
+
+https://github.com/karpathy/nanoGPT
+
+https://github.com/OpenQuantumComputing/QAOA
+
+https://github.com/kmsherbertvt/ADAPT.jl
+
+https://pennylane.ai/codebook/hamiltonian-time-evolution/hamiltonians
+
+https://pennylane.ai/demos/tutorial_qaoa_intro
+
+```
+@article{tyagin2025qaoa,
+  title={QAOA-GPT: Efficient Generation of Adaptive and Regular Quantum Approximate Optimization Algorithm Circuits},
+  author={Tyagin, Ilya and Farag, Marwa H and Sherbert, Kyle and Shirali, Karunya and Alexeev, Yuri and Safro, Ilya},
+  journal={arXiv preprint arXiv:2504.16350},
+  year={2025}
+}
+```
